@@ -11,8 +11,9 @@ package of this repository: PRiSM through `prism.PRiSM.from_preset(...)`, MAP an
 From this directory:
 
 ```bash
-conda env create -p ~/envs/prism-molecular -f env_molecular.yml    # any prefix works
+PYTHONNOUSERSITE=1 conda env create -p ~/envs/prism-molecular -f env_molecular.yml    # any prefix works
 conda activate ~/envs/prism-molecular
+export PYTHONNOUSERSITE=1                # keep packages of ~/.local out of the environment
 python scripts/download_data.py          # ZINC.pkl -> ./data/molecules, OGB -> ./data/ogb (about 2.4 GB, mostly MolPCBA)
 python -m pytest tests                   # unit tests, no GPU or dataset needed
 ```

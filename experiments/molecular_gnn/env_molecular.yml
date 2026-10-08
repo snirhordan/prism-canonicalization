@@ -1,7 +1,7 @@
 # Environment of the molecular GNN experiments (GatedGCN / PNA on ZINC, MolTox21, MolPCBA).
 # Versions of the environment the harness was last run in (torch 2.2.0+cu118, dgl 2.1.0+cu118).
 #
-#   conda env create -p ~/envs/prism-molecular -f env_molecular.yml     # run from this directory
+#   PYTHONNOUSERSITE=1 conda env create -p ~/envs/prism-molecular -f env_molecular.yml     # run from this directory
 #   conda activate ~/envs/prism-molecular
 #
 # The last line installs the repository's `prism` package in editable mode (path relative to
@@ -23,6 +23,7 @@ dependencies:
       - tqdm==4.67.3
       - PyYAML==6.0.3
       - pydantic==2.13.3
+      - typing_extensions==4.15.0
       - psutil==7.2.2
       - torch==2.2.0+cu118
       - torchdata==0.7.1
