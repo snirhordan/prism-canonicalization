@@ -1,0 +1,35 @@
+{
+    "gpu": {
+        "use": true,
+        "id": 0
+    },
+    "model": "GatedGCN",
+    "dataset": "OGBG-MOLPCBA",
+    "out_dir": "out/GatedGCN_MOLPCBA_OAP/",
+    "params": {
+        "seed": 41,
+        "epochs": 1000,
+        "batch_size": 256,
+        "init_lr": 0.001,
+        "lr_reduce_factor": 0.5,
+        "lr_schedule_patience": 25,
+        "min_lr": 1e-05,
+        "weight_decay": 0.0,
+        "max_time": 120
+    },
+    "net_params": {
+        "L": 8,
+        "hidden_dim": 200,
+        "out_dim": 200,
+        "residual": true,
+        "readout": "mean",
+        "dropout": 0.1,
+        "batch_norm": true,
+        "pe_init": "oap",
+        "pos_enc_dim": 3,
+        "sign_inv_net": "masked_gin",
+        "sign_inv_layers": 8,
+        "phi_out_dim": 200,
+        "sign_inv_activation": "relu"
+    }
+}

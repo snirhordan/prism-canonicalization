@@ -1,0 +1,31 @@
+{
+    "gpu": {
+        "use": true,
+        "id": 0
+    },
+    "model": "GatedGCN",
+    "dataset": "OGBG-MOLTOX21",
+    "out_dir": "out/GatedGCN_MOLTOX21_LapPE/",
+    "params": {
+        "seed": 41,
+        "epochs": 1000,
+        "batch_size": 256,
+        "init_lr": 0.001,
+        "lr_reduce_factor": 0.5,
+        "lr_schedule_patience": 25,
+        "min_lr": 1e-05,
+        "weight_decay": 0.0,
+        "max_time": 48
+    },
+    "net_params": {
+        "L": 8,
+        "hidden_dim": 154,
+        "out_dim": 154,
+        "residual": true,
+        "readout": "mean",
+        "dropout": 0.4,
+        "batch_norm": true,
+        "pe_init": "lap_pe",
+        "pos_enc_dim": 3
+    }
+}

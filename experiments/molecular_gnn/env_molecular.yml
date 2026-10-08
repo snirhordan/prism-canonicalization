@@ -1,0 +1,32 @@
+# Environment of the molecular GNN experiments (GatedGCN / PNA on ZINC, MolTox21, MolPCBA).
+# Versions of the environment the harness was last run in (torch 2.2.0+cu118, dgl 2.1.0+cu118).
+#
+#   conda env create -p ~/envs/prism-molecular -f env_molecular.yml     # run from this directory
+#   conda activate ~/envs/prism-molecular
+#
+# The last line installs the repository's `prism` package in editable mode (path relative to
+# this file).  numpy is pinned explicitly: torch 2.2 and dgl 2.1 are built against numpy 1.x.
+name: prism-molecular
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu118
+      - --find-links https://data.dgl.ai/wheels/cu118/repo.html
+      - numpy==1.26.4
+      - scipy==1.15.3
+      - networkx==3.4.2
+      - pandas==2.3.3
+      - scikit-learn==1.4.0
+      - tqdm==4.67.3
+      - PyYAML==6.0.3
+      - pydantic==2.13.3
+      - psutil==7.2.2
+      - torch==2.2.0+cu118
+      - torchdata==0.7.1
+      - dgl==2.1.0+cu118
+      - ogb==1.3.6
+      - pytest==9.0.2
+      - -e ../..
