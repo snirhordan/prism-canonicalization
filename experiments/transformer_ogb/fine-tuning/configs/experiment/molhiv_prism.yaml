@@ -1,0 +1,4 @@
+# @package _global_
+dataset_name: ogbg-molhiv
+pe_type: CanonLPE_min_rope
+refine_ordering: true

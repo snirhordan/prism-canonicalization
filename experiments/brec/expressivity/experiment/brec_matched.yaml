@@ -1,0 +1,11 @@
+# @package _global_
+# Matched small architecture shared by all methods: GINE backbone with a DeepSets
+# eigenvector embedding, 8 eigenvectors, 12,656 trainable parameters (12,664 with
+# the learnable eigenvalue perturbation of the LPE-style types).
+backbone: gnn
+num_vecs: 8
+embed_dim: 32
+eigen_dim: 32
+num_layers: 2
+num_heads: 2
+pooling: mean

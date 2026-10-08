@@ -1,0 +1,4 @@
+# @package _global_
+dataset_name: ogbg-molclintox
+pe_type: CanonLPE_min_sinid
+refine_ordering: true

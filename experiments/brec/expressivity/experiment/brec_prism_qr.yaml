@@ -1,0 +1,5 @@
+# @package _global_
+defaults:
+  - brec_matched
+# PRiSM with QR for every multiplicity and ordering refinement (preset "brec_qr_refined").
+pe_type: QRRefinedLPE

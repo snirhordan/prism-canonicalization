@@ -1,0 +1,5 @@
+# @package _global_
+defaults:
+  - brec_matched
+# PRiSM (preset "brec": hybrid extension, no ordering refinement).
+pe_type: CanonLPE_noeps

@@ -1,0 +1,30 @@
+# Environment of the transformer (OGB, Alchemy) and BREC experiments.
+# Create it from the repository root so that the two local packages resolve:
+#   conda env create -f experiments/transformer_ogb/env_transformer.yml
+#   conda activate prism-transformer
+# The versions are the ones the experiments ran with (CUDA 12.1 wheels of torch).
+name: prism-transformer
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - numpy==1.26.4
+      - scipy==1.15.3
+      - torch==2.1.0
+      - torchvision==0.16.0
+      - torch-geometric==2.4.0
+      - ogb==1.3.6
+      - hydra-core==1.3.2
+      - omegaconf==2.3.0
+      - loguru==0.7.2
+      - tqdm==4.66.1
+      - prettytable==3.9.0
+      - rdkit==2023.9.1
+      - scikit-learn==1.7.2
+      - pandas==2.3.3
+      - brec==1.0.0
+      - pytest
+      - -e .[torch]
+      - -e experiments/wl_transformers

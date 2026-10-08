@@ -1,0 +1,4 @@
+# @package _global_
+dataset_name: ogbg-molhiv
+pe_type: OAP_min
+refine_ordering: false

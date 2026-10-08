@@ -1,0 +1,32 @@
+defaults:
+  - model: graph_transformer
+  - _self_
+
+root: .
+seed: 0
+num_workers: 0           # >0 changes the random-number stream of the data loaders
+pe_type: LPE             # see wl_transformers.pe_types
+refine_ordering: false   # sequential refinement of the canonical vertex order (PRiSM)
+prism_preset: null       # override the PRiSM preset (default: derived from pe_type and refine_ordering)
+rope_base_freq: 10000.0
+
+lr: 1e-4
+min_lr: 0
+gradient_norm: 5.0
+weight_decay: 0.1
+batch_size: 32
+num_epochs: 100
+dataset_name: ???
+
+# Smoke test: first `smoke_graphs` graphs of every split, one epoch.
+smoke: false
+smoke_graphs: 64
+
+# Weights & Biases logging is off unless a project is given.
+wandb_project: null
+wandb_entity: null
+wandb_name: null
+
+hydra:
+  searchpath:
+    - pkg://wl_transformers.conf

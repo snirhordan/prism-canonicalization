@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - brec_matched
+pe_type: MAP

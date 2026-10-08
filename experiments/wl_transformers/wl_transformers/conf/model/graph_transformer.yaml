@@ -1,0 +1,19 @@
+# @package _global_
+# Architecture of the graph transformer / GINE backbone.  These values are the
+# ones used by every run of the paper's transformer and BREC experiments.
+order: 2                   # pair tokens (edges and self loops)
+num_vecs: 96               # Laplacian eigenvectors kept
+normalized_laplacian: yes  # I - D^-1/2 A D^-1/2
+normalize_eigenvecs: no
+max_degree: 100
+num_phi_layers: 2          # depth of phi in the DeepSets eigenvector embedding
+embed_dim: 768
+eigen_dim: 768
+degree_dim: 16
+num_layers: 12
+num_heads: 16
+attention_dropout: 0.1
+dropout: 0.1
+bias: yes
+stochastic_depth: yes
+token_ln: yes

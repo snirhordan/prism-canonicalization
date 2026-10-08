@@ -1,0 +1,30 @@
+defaults:
+  - model: graph_transformer
+  - _self_
+
+root: .
+seed: null               # null: no extra seeding (the brec package seeds torch_geometric at import)
+backbone: gnn            # gnn (GINE + DeepSets eigenvector embedding) or transformer
+pe_type: LPE             # see wl_transformers.pe_types
+refine_ordering: false   # sequential refinement of the canonical vertex order (PRiSM)
+prism_preset: null       # override the PRiSM preset (default: derived from pe_type and refine_ordering)
+output_dim: 16
+batch_size: 16
+pooling: mean
+epochs: 20               # maximum training epochs per pair (early stop at loss < 0.2)
+
+# BREC categories to evaluate; the four of the paper's table are 360 pairs.
+parts: [Basic, Regular, Extension, CFI]
+max_pairs_per_part: null
+
+# Smoke test: first two Basic pairs, two epochs.
+smoke: false
+
+# Weights & Biases logging is off unless a project is given.
+wandb_project: null
+wandb_entity: null
+wandb_name: null
+
+hydra:
+  searchpath:
+    - pkg://wl_transformers.conf

@@ -1,0 +1,4 @@
+# @package _global_
+pe_type: CanonLPE_min_rope
+refine_ordering: true
+lr: 1e-4

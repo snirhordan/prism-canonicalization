@@ -1,0 +1,3 @@
+# @package _global_
+# Learning rate is the default of alchemy.yaml (1e-3).
+pe_type: OAP_min
