@@ -16,3 +16,4 @@ dist/
 /experiments/**/ckpt/
 /experiments/**/outputs/
 /experiments/**/wandb/
+dev_notes/

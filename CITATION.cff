@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "prism-canonicalization: PRiSM eigenvector canonicalization and the experiments of the NeurIPS 2026 paper"
+type: software
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/snirhordan/prism-canonicalization"
+authors:
+  - family-names: Hordan
+    given-names: Snir
+  - family-names: Dym
+    given-names: Nadav
+  - family-names: Seppelt
+    given-names: Tim
+preferred-citation:
+  type: conference-paper
+  title: "Weisfeiler Leman is Incomplete On Graphs With A Simple Spectrum"
+  collection-title: "Advances in Neural Information Processing Systems"
+  year: 2026
+  authors:
+    - family-names: Hordan
+      given-names: Snir
+    - family-names: Dym
+      given-names: Nadav
+    - family-names: Seppelt
+      given-names: Tim

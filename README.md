@@ -1,20 +1,56 @@
 # prism-canonicalization
 
-Reference implementation of **PRiSM** (Partition, Refine, Solve, Match), the
-eigenvector canonicalization of
+Reference implementation and experiment code for
 
-> Snir Hordan, Nadav Dym, Tim Seppelt. *Weisfeiler Leman is Incomplete On Graphs
-> With A Simple Spectrum.* NeurIPS 2026.
+> Snir Hordan, Nadav Dym, Tim Seppelt. *Weisfeiler Leman is Incomplete On Graphs With A Simple Spectrum.*
+> Advances in Neural Information Processing Systems (NeurIPS), 2026.
 
-All experiments of the paper use **one class**, `prism.PRiSM`. A run selects its
-variant through a named preset (`prism/presets.py`), a dictionary of constructor
-arguments. The numpy core has no dependency beyond numpy and scipy; PyTorch is
-needed only for the MAP and OAP baselines and for the DGL adapter.
+The paper has two results. The negative one: for every k there are pairs of graphs with a **simple
+spectrum** (all adjacency eigenvalues distinct) that k-WL, and therefore every message-passing GNN of
+that power, cannot tell apart. The positive one: simple-spectrum graphs are separated by a *complete*
+canonicalization of their eigenvectors. **PRiSM** (Partition, Refine, Solve, Match) is such a
+canonicalization. It partitions the vertices by the absolute values of the eigenvector entries, refines
+that partition into a vertex order, solves a linear system over GF(2) for the sign of every eigenvector,
+and extends the procedure to repeated eigenvalues by a per-eigenspace basis choice. The canonical
+eigenvectors, and the vertex order they induce, are used as positional encodings of GNNs and graph
+Transformers.
+
+This repository contains PRiSM as a small numpy package (`prism`), the MAP and OAP baselines on the same
+interface, and the code of every experiment table of the paper.
+
+## Contents
+
+* [Installation](#installation)
+* [Quick start](#quick-start)
+* [Repository map](#repository-map)
+* [Reproducing the paper](#reproducing-the-paper)
+* [Presets and paper cells](#presets)
+* [Tests](#tests), [Citation](#citation), [License](#license)
+
+## Installation
+
+The core package needs only numpy and scipy:
 
 ```
+git clone https://github.com/snirhordan/prism-canonicalization.git
+cd prism-canonicalization
 pip install -e .            # numpy, scipy
 pip install -e ".[torch]"   # + torch, for prism.baselines.MAP / OAP
+pip install -e ".[dgl]"     # + torch and dgl, for the DGL adapter
 ```
+
+Each experiment has its own pinned environment file. They do not share a Python environment because the
+backbones need different versions of torch (2.1 for the Transformers, 2.2 for the DGL GNNs):
+
+| experiment | environment file | stack |
+|---|---|---|
+| `experiments/molecular_gnn` | `env_molecular.yml` | Python 3.10, torch 2.2.0+cu118, dgl 2.1.0+cu118, ogb 1.3.6, numpy 1.26.4 |
+| `experiments/transformer_ogb`, `experiments/brec` | `experiments/transformer_ogb/env_transformer.yml` | Python 3.10, torch 2.1.0 (CUDA 12.1), torch_geometric 2.4.0, ogb 1.3.6, hydra 1.3.2, `brec` 1.0.0, numpy 1.26.4 |
+| `experiments/appendix` | `env_appendix.yml` | Python 3.10, CPU torch 2.2.0, torch_geometric 2.4.0, ogb 1.3.6, numpy 1.26.4 |
+
+Create them with `conda env create -p <prefix> -f <file>` and set `PYTHONNOUSERSITE=1` while creating and
+using them, so that packages in `~/.local` cannot shadow missing pins. Every file lists numpy explicitly
+(torch 2.x of these versions needs numpy 1.x). The per-experiment READMEs give the exact commands.
 
 ## Quick start
 
@@ -30,6 +66,258 @@ lam, V = canon.eigendecompose(A)          # eigenpairs of the preset's operator
 Vc = canon.canonicalize(V, lam)           # canonical eigenvectors
 info = canon.canonicalize(V, lam, return_info=True)   # + order, rank, norm_sig
 ```
+
+The same call for the baselines (needs torch):
+
+```python
+from prism.baselines import MAP, OAP, lap_pe, random_sign_flip
+pe_map = MAP.from_profile("gnn").pos_enc(A, k=8)
+```
+
+## Repository map
+
+```
+prism/                      the package
+  prism.py                  class PRiSM, the single entry point
+  presets.py                named configurations, one per experimental setting
+  core.py, gf2.py           canonicalization procedures; the four stages Partition, Refine, Solve, Match
+  operators.py              normalized adjacency, normalized and combinatorial Laplacian
+  baselines/                MAP, OAP (adapted from PKU-ML), lap_pe, random_sign_flip
+  adapters/                 dgl.py (DGL graphs), transformer.py (canonical order and rank)
+experiments/
+  molecular_gnn/            GatedGCN and PNA on ZINC, MolTox21, MolPCBA        (tab:molecular-results)
+  transformer_ogb/          graph Transformer on MolHIV, MolClinTox, MolBBBP, Alchemy (tab:transformer-results)
+  brec/                     BREC expressivity benchmark                          (tab:brec-comparison)
+  wl_transformers/          shared model code of the two experiments above (installable library)
+  appendix/                 the five appendix tables, CPU only
+results/paper_tables/       the numbers printed in the paper, one CSV per table
+tests/                      unit tests and golden tests of the package
+dev/make_golden.py          regenerates tests/fixtures/golden.npz from the original research code
+THIRD_PARTY_NOTICES        licences of the adapted upstream code
+CITATION.cff
+```
+
+All experiments canonicalize through `prism.PRiSM.from_preset(...)` or `prism.baselines`; the experiment
+directories contain no other canonicalization code. SignNet, the sign-invariant network that the molecular GNN
+experiment compares against, is a model (not a canonicalization) and lives in that experiment.
+
+## Reproducing the paper
+
+**Hardware.** Canonicalization (PRiSM, MAP, OAP) runs on CPU, in float64. The paper trained every model on a
+single NVIDIA A40 (48 GB) per run, from a pool of eight; no run used more than one GPU. All pipelines were
+checked end to end on an A40 (one-epoch smoke runs, below). Run each experiment from its own directory; data,
+positional-encoding caches and outputs are created below it (`./data`, `./cache`, `./out`, `./outputs`) and are
+ignored by git. No datasets, checkpoints or logs are distributed with the repository.
+
+**Cost.** Per-seed GPU time of the paper's runs, from the training logs: GatedGCN on ZINC 1.0 to 4.3 h, PNA on
+ZINC 4.8 to 18.0 h, GatedGCN and PNA on MolTox21 0.4 to 1.5 h, MolPCBA 3.8 to 44.6 h (PNA at the upper end),
+Transformers 3 to 9 h, BREC several hours for the 360 pairs. The smoke checks below take seconds to a minute.
+The molecular and Transformer harnesses write no checkpoints, so a run that is interrupted starts over; the
+molecular harness runs one seed per process with `--seed S` (a run without `--seed` trains the four seeds one
+after the other).
+
+**Numbers.** The values quoted below are those printed in the paper (also in `results/paper_tables/`). GPU
+training is not bit-deterministic across hardware and library builds. The counts of the CPU experiments of the
+appendix depend on the eigenvector basis that `numpy.linalg.eigh` returns for repeated eigenvalues, which
+varies with the BLAS/LAPACK build and the processor (see `experiments/appendix/README.md`).
+
+### Main text
+
+#### tab:brec-comparison: BREC expressivity (360 pairs)
+
+* **Experiment:** `experiments/brec`, a GINE backbone whose only positional information is a DeepSets embedding of
+  the first 8 Laplacian eigenvectors; embedding size 32, 2 layers, about 12K parameters, identical for all rows.
+* **Environment:** the Transformer environment (`experiments/transformer_ogb/env_transformer.yml`); the `brec`
+  package downloads and converts the dataset on first use.
+* **Presets:** PRiSM `brec` (and `brec_qr_refined`, QR for every multiplicity), MAP and OAP with profile `brec`.
+* **Seeds:** none beyond the fixed `seed_everything(2022)` of the `brec` package; each pair trains its own model.
+* **Smoke check:** about 10 s for two pairs on an A40.
+
+```
+cd experiments/brec
+python expressivity/brec_benchmark.py +experiment=brec_prism       # PRiSM
+python expressivity/brec_benchmark.py +experiment=brec_prism_qr    # PRiSM, QR for every multiplicity
+python expressivity/brec_benchmark.py +experiment=brec_map         # MAP
+python expressivity/brec_benchmark.py +experiment=brec_oap         # OAP
+python expressivity/brec_benchmark.py +experiment=brec_prism smoke=true
+```
+
+Paper (pairs distinguished):
+
+| method | Basic /60 | Regular /100 | Ext. /100 | CFI /100 | Total /360 |
+|---|---:|---:|---:|---:|---:|
+| PRiSM | 60 | 50 | 99 | 3 | 212 |
+| MAP | 60 | 42 | 94 | 3 | 199 |
+| OAP | 60 | 42 | 94 | 3 | 199 |
+
+#### tab:molecular-results: GatedGCN and PNA on ZINC, MolTox21, MolPCBA
+
+* **Experiment:** `experiments/molecular_gnn`, one config per backbone, dataset and method
+  (`configs/<Backbone>_<DATASET>_<method>.json`; 24 table cells).
+* **Environment:** `experiments/molecular_gnn/env_molecular.yml`; `python scripts/download_data.py` fetches ZINC and
+  the OGB datasets into `./data` (about 2.4 GB, mostly MolPCBA).
+* **Presets** (`k` = number of eigenvector columns): ZINC GatedGCN `zinc_gatedgcn` (k=8), ZINC PNA `zinc_pna` (k=8),
+  MolTox21 GatedGCN `moltox21_gatedgcn` (k=3), MolTox21 PNA `moltox21_pna` (k=16), MolPCBA GatedGCN
+  `molpcba_gatedgcn` (k=3), MolPCBA PNA `molpcba_pna` (k=16). MAP and OAP: profile `gnn`.
+* **Seeds:** 41, 95, 12, 35; mean and standard deviation (ddof 0) of the test metric over the four seeds.
+  ZINC reports the test MAE of the last epoch; MolTox21 and MolPCBA the test metric at the epoch of best validation metric.
+* **Smoke check:** 12 to 25 s (71 s for PNA on MolPCBA) per config on an A40, one epoch on 512/128/128 graphs.
+* **Cost notes:** build the positional-encoding cache once on CPU before launching seeds
+  (`--build_pe_only --pe_workers 4`; about two hours serially for MolPCBA with k=16); PNA on MolPCBA needs one
+  48 GB GPU per process. `PNA_MOLPCBA_SignNet` does not fit in memory (OOM in the table).
+
+```
+cd experiments/molecular_gnn
+python scripts/download_data.py
+python main_ZINC_graph_regression.py --config configs/GatedGCN_ZINC_PRiSM.json            # one cell, all four seeds
+python main_ZINC_graph_regression.py --config configs/GatedGCN_ZINC_PRiSM.json --seed 41   # one seed
+python main_ZINC_graph_regression.py --config configs/GatedGCN_ZINC_PRiSM.json --smoke
+
+# the whole table
+for bb in GatedGCN PNA; do for m in PRiSM SignNet MAP OAP; do
+  python main_ZINC_graph_regression.py --config configs/${bb}_ZINC_${m}.json; done; done
+for ds in MOLTOX21 MOLPCBA; do for bb in GatedGCN PNA; do for m in PRiSM SignNet MAP OAP; do
+  python main_OGBMOL_graph_classification.py --config configs/${bb}_${ds}_${m}.json; done; done; done
+```
+
+Paper (mean +- std over four seeds; ZINC: test MAE, lower is better; MolTox21: ROC-AUC; MolPCBA: average precision):
+
+| method | ZINC GatedGCN | ZINC PNA | MolTox21 GatedGCN | MolTox21 PNA | MolPCBA GatedGCN | MolPCBA PNA |
+|---|---|---|---|---|---|---|
+| PRiSM | **0.110 +- 0.002** | **0.103 +- 0.003** | **0.783 +- 0.006** | 0.762 +- 0.004 | **0.272 +- 0.003** | **0.278 +- 0.001** |
+| SignNet | 0.121 +- 0.002 | 0.105 +- 0.007 | 0.769 +- 0.007 | 0.744 +- 0.002 | 0.260 +- 0.002 | OOM |
+| MAP | 0.123 +- 0.003 | 0.104 +- 0.003 | 0.777 +- 0.004 | **0.763 +- 0.004** | 0.268 +- 0.002 | 0.274 +- 0.003 |
+| OAP | 0.126 +- 0.004 | 0.106 +- 0.002 | **0.783 +- 0.006** | 0.761 +- 0.008 | 0.270 +- 0.002 | 0.272 +- 0.002 |
+
+Two PRiSM cells have an extra config with its own preset for an alternative formulation of the same cell
+(`GatedGCN_ZINC_PRiSM_heat_t2`, preset `zinc_gatedgcn_heat_t2`; `GatedGCN_MOLPCBA_PRiSM_plain`, preset
+`molpcba_gatedgcn_plain`). Plain LapPE configs are included for completeness.
+
+#### tab:transformer-results: Transformer backbone on OGB and Alchemy
+
+* **Experiment:** `experiments/transformer_ogb`, the graph Transformer of Kim et al. as adapted in
+  `experiments/wl_transformers`, with the canonicalized Laplacian positional encoding. PRiSM additionally supplies the
+  canonical vertex order, fed to the model as a rank embedding (RoPE on MolHIV and Alchemy, sinusoidal on
+  MolClinTox, none on MolBBBP).
+* **Environment:** `experiments/transformer_ogb/env_transformer.yml`. Datasets download on first use into `./data`
+  (Alchemy downloads the full 200K-graph `alchemy_full` and uses the 10K subset of `fine-tuning/*_al_10.index`).
+* **Preset:** PRiSM `transformer_refined` (through `wl_transformers.pe_types`); MAP and OAP profile `brec`.
+* **Seeds:** per row below (shell loop `for s in ...`); the reported value is the test score at the best
+  validation epoch.
+* **Smoke check:** 13 to 20 s on an A40 (64 graphs per split, a few steps).
+
+```
+cd experiments/transformer_ogb
+for s in 0 1 2; do python fine-tuning/ogbg.py +experiment=molhiv_prism seed=$s; done
+python fine-tuning/alchemy.py +experiment=alchemy_prism seed=0
+python fine-tuning/ogbg.py +experiment=molclintox_prism smoke=true
+```
+
+All 16 rows are named configs: `{molhiv,molclintox,molbbbp}_{prism,lpe,map,oap}` with `fine-tuning/ogbg.py` and
+`alchemy_{prism,lpe,map,oap}` with `fine-tuning/alchemy.py`. The seed list of each row is in
+`experiments/transformer_ogb/README.md`; the paper reports three seeds per cell, Alchemy seeds {0, 1, 3}.
+
+Paper (ROC-AUC, higher is better, for the three OGB datasets; test MAE, lower is better, for Alchemy):
+
+| method | MolHIV | MolClinTox | MolBBBP | Alchemy |
+|---|---|---|---|---|
+| PRiSM | **0.7430 +- 0.0233** | **0.8576 +- 0.0038** | **0.7088 +- 0.0293** | **0.11956 +- 0.00130** |
+| LPE | 0.6891 +- 0.0068 | 0.7905 +- 0.0444 | 0.6798 +- 0.0179 | 0.12655 +- 0.00056 |
+| MAP | 0.7221 +- 0.0190 | 0.7900 +- 0.0440 | 0.7029 +- 0.0019 | 0.13058 +- 0.00038 |
+| OAP | 0.6878 +- 0.0197 | 0.7820 +- 0.0530 | 0.6825 +- 0.0323 | 0.13216 +- 0.00488 |
+
+### Appendix
+
+All five appendix scripts run on CPU, in the environment `experiments/appendix/env_appendix.yml`, from
+`experiments/appendix`. Datasets are downloaded into `--data-dir` (default `./data`). `--help` lists options for
+smaller sample sizes. Run times are wall-clock on one core of a Xeon server.
+
+#### tab:rbound-stats: row bound r = n - L of the GF(2) system
+
+* **Command:** `python rbound_stats.py --data-dir ./data --out results/rbound_stats.csv`
+* **Method:** `prism.gf2.partition_stage` (stage Partition, tolerance 1e-6) on the full eigendecomposition of the
+  normalized Laplacian, validation splits of ZINC-12K and the eleven OGB-Mol datasets.
+* **Seeds:** none (deterministic). **Time:** under a minute to about five minutes once the datasets are processed.
+
+Paper: number of validation graphs, mean nodes, share with r=0, share with exactly one non-singleton block, median r, share with r <= 4, max r.
+
+| dataset | val graphs | mean n | r=0 | 1 block | median r | r<=4 | max r |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ZINC-12K | 1,000 | 23.1 | 22.8% | 10.9% | 2.0 | 88.0% | 11 |
+| MolHIV | 4,113 | 27.8 | 21.2% | 6.4% | 3.0 | 63.9% | 53 |
+| MolTox21 | 783 | 26.8 | 17.5% | 8.6% | 3.0 | 67.4% | 32 |
+| MolClinTox | 148 | 32.8 | 27.0% | 9.5% | 2.0 | 70.3% | 37 |
+| MolBBBP | 204 | 33.2 | 14.2% | 17.2% | 2.0 | 81.4% | 32 |
+| MolBACE | 151 | 37.2 | 3.3% | 10.6% | 3.0 | 81.5% | 6 |
+| MolESOL | 113 | 17.7 | 38.1% | 14.2% | 1.0 | 77.0% | 15 |
+| MolFreeSolv | 64 | 12.0 | 45.3% | 4.7% | 1.5 | 78.1% | 12 |
+| MolLipo | 420 | 27.3 | 14.8% | 7.9% | 3.0 | 74.3% | 25 |
+| MolMUV | 9,309 | 25.3 | 12.8% | 3.3% | 3.0 | 73.3% | 17 |
+| MolToxCast | 858 | 26.2 | 20.5% | 10.7% | 2.5 | 69.4% | 37 |
+| MolPCBA | 43,793 | 27.1 | 13.9% | 4.7% | 3.0 | 74.3% | 71 |
+
+`experiments/appendix/results/rbound_stats.csv` is the output of the port on one machine.
+
+#### tab:multiplicity-stats: eigenvalue multiplicities
+
+* **Command:** `python multiplicity_stats.py --data-dir ./data --out results/multiplicity_stats.csv`
+* **Method:** eigenvalues of D^-1/2 A D^-1/2 (`numpy.linalg.eigvalsh`), classes of absolute tolerance 1e-6.
+* **Seed:** `random.seed(42)`, 500 graphs per dataset. **Time:** seconds.
+
+| dataset | sampled | mean n | #m=1 | #m=2 | #m=3 | #m>=4 | % simple spectrum |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| ZINC | 500 | 23.0 | 20.86 | 0.59 | 0.20 | 0.09 | 38.0% |
+| MolHIV | 500 | 25.7 | 21.54 | 0.88 | 0.30 | 0.28 | 32.8% |
+| MolTox21 | 500 | 17.9 | 14.96 | 0.72 | 0.21 | 0.17 | 38.4% |
+| MolClinTox | 500 | 26.6 | 23.34 | 0.59 | 0.25 | 0.24 | 28.6% |
+| MolBBBP | 500 | 23.5 | 20.93 | 0.49 | 0.26 | 0.16 | 34.4% |
+
+#### tab:invariance: permutation-equivariance failures
+
+* **Command:** `python invariance_test.py --data-dir ./data --out results/invariance.json`
+* **Preset:** PRiSM `qr_refined_full`; MAP and OAP profile `gnn`.
+* **Protocol:** 200 training graphs per dataset times 5 random permutations (1,000 trials per cell), full
+  eigendecomposition; a trial fails when the canonical encoding of the permuted graph is not a row-permutation
+  of the original (row-multiset equality, atol 1e-6). **Time:** a few minutes.
+
+| dataset | PRiSM | MAP | OAP |
+|---|---:|---:|---:|
+| ZINC | 0 | 692 | 684 |
+| MolTox21 | 10 | 772 | 753 |
+
+#### tab:noise-sensitivity: invariance under symmetric matrix noise
+
+* **Command:** `python noise_sensitivity.py --data-dir ./data --out results/noise_sensitivity.json`
+* **Preset:** PRiSM `rebuttal_comb_lap` (hybrid with refinement on D - A); MAP and OAP profile `brec`.
+* **Protocol:** first 200 ZINC-12K validation graphs, 5 permutations each, failures out of 1,000 per seed, mean +- std
+  over seeds 42, 43, 44. **Time:** about 20 minutes.
+
+| sigma | PRiSM | MAP | OAP |
+|---|---:|---:|---:|
+| 0 | 0.0 +- 0.0 | 753.0 +- 7.0 | 748.7 +- 7.6 |
+| 1e-12 | 2.7 +- 3.1 | 944.7 +- 0.6 | 743.0 +- 6.9 |
+| 1e-8 | 0.3 +- 0.6 | 447.3 +- 44.0 | 19.7 +- 5.5 |
+| 1e-6 | 0.0 +- 0.0 | 8.7 +- 4.6 | 0.0 +- 0.0 |
+| 1e-4 | 0.0 +- 0.0 | 0.0 +- 0.0 | 0.0 +- 0.0 |
+| 1e-2 | 0.0 +- 0.0 | 0.0 +- 0.0 | 0.0 +- 0.0 |
+
+#### tab:runtime-scaling: canonicalization time
+
+* **Command:** `python runtime_scaling.py --out results/runtime_scaling.json`
+* **Preset:** PRiSM `rebuttal_comb_lap`; MAP and OAP profile `brec`. The script pins OpenMP, MKL, OpenBLAS and
+  torch to one thread.
+* **Protocol:** Erdos-Renyi graphs, 50 per size n in {16, ..., 512}, seed 42, one untimed warm-up call, then the
+  timed call; median milliseconds per graph. **Time:** about an hour (MAP and OAP at n = 256, 512 dominate).
+  Absolute times depend on the processor.
+
+| n | PRiSM (ms) | MAP (ms) | OAP (ms) | vs MAP | vs OAP |
+|---:|---:|---:|---:|---:|---:|
+| 16 | 1.04 | 16.06 | 16.46 | 15.4x | 15.8x |
+| 32 | 3.54 | 59.12 | 60.05 | 16.7x | 17.0x |
+| 64 | 16.16 | 258.23 | 258.88 | 16.0x | 16.0x |
+| 128 | 91.86 | 3064.77 | 3064.46 | 33.4x | 33.4x |
+| 256 | 757.73 | 12441.65 | 12027.64 | 16.4x | 15.9x |
+| 512 | 4155.32 | 12961.90 | 13065.93 | 3.1x | 3.1x |
 
 ## The `PRiSM` class
 
@@ -71,6 +359,7 @@ checks this against outputs of the original implementations.
 | `brec`, `brec_qr_refined` | `CanonLPE_*`, `QRRefinedLPE` | `tab:brec-comparison` |
 | `qr_refined_full` | `spectral_qr_refined` on all eigenpairs | `tab:invariance` |
 | `rebuttal_comb_lap` | `spectral_m3(refine_ordering=True)` on D - A | `tab:noise-sensitivity`, `tab:runtime-scaling` |
+| (no preset) | `prism.gf2.partition_stage` | `tab:rbound-stats` |
 | `prism_gf2` | Algorithm 1 sign rule | not used in a table cell |
 | `zinc_gatedgcn_heat_t2`, `molpcba_gatedgcn_plain` | alternative provenance of two cells | see below |
 
@@ -80,10 +369,11 @@ canonical order and rank that they consume.
 
 ## Notes on the correspondence between paper and code
 
-* All table cells run the *hybrid* extension. For m = 1 it flips every column so
-  that its first significant entry in the canonical vertex order is positive,
-  which is FastSign with an ordering heuristic; Refine and Solve (Algorithm 1)
-  were not part of the table runs. Both are available (`sign_rule="gf2"`).
+* All table cells use the `first_pivot` sign rule. For a simple eigenvalue (m = 1) it flips every
+  column so that its first significant entry in the canonical vertex order is positive, which is FastSign
+  with an ordering heuristic; the GF(2) system of Algorithm 1 (Refine and Solve) was not part of the
+  table runs. It is available as `sign_rule="gf2"` (preset `prism_gf2`). Repeated eigenvalues are
+  handled by the `hybrid` or the `qr` extension, whichever the preset of the cell names.
 * The transformer and BREC harness canonicalizes float32 eigenpairs with
   fixed-decimal tolerances (`legacy_round`); the molecular harness uses float64
   and relative tolerances (`adaptive`). Both are exposed so that either can be
@@ -95,18 +385,35 @@ canonical order and rank that they consume.
 ## Tests
 
 ```
-python -m pytest
+python -m pytest                       # package: golden, invariance, FastSign, GF(2), API, repository hygiene
 ```
 
-* `test_golden.py` compares every preset with `tests/fixtures/golden.npz`.
+* `test_golden.py` compares every preset with `tests/fixtures/golden.npz`, generated from the original research
+  code with `LIVE_SRC=<checkouts> python dev/make_golden.py` (see the script header).
 * `test_invariance.py`: sign-flip, permutation and O(m) invariance.
 * `test_fastsign.py`, `test_gf2.py`: Algorithms 1 and 2 and the worked example of the paper.
 * `test_api.py`, `test_repo_hygiene.py`: interface and repository checks.
 
-The golden file is generated from the original research code with
-`LIVE_SRC=<checkouts> python dev/make_golden.py` (see the script header).
+Each experiment directory has its own `tests/` (configs, shapes, parameter counts, command-line entry points on
+synthetic data); run them inside the experiment's environment with `python -m pytest tests`. The package tests
+need only numpy and scipy; the tests that import torch are skipped without it.
+
+## Citation
+
+```bibtex
+@inproceedings{hordan2026weisfeiler,
+  title     = {Weisfeiler Leman is Incomplete On Graphs With A Simple Spectrum},
+  author    = {Hordan, Snir and Dym, Nadav and Seppelt, Tim},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2026}
+}
+```
+
+`CITATION.cff` carries the same information for GitHub.
 
 ## License
 
-MIT. MAP and OAP are adapted from https://github.com/PKU-ML/canonicalization
-(MIT, Copyright (c) 2024 PKU-ML).
+MIT, see `LICENSE`. MAP and OAP are adapted from https://github.com/PKU-ML/canonicalization (MIT, Copyright (c)
+2024 PKU-ML). The experiments adapt wl-transformers, BREC, benchmarking-gnns, gnn-lspe, SignNet-BasisNet and the
+PNA reference implementation, all MIT; their copyright notices are in `THIRD_PARTY_NOTICES`. Datasets (ZINC, OGB,
+Alchemy, BREC) are downloaded from their original hosts and keep their own licences.

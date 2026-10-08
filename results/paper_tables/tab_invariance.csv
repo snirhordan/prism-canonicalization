@@ -1,0 +1,7 @@
+method,dataset,metric,mean,std,n_seeds
+PRiSM,ZINC,failures_of_1000,0,,
+MAP,ZINC,failures_of_1000,692,,
+OAP,ZINC,failures_of_1000,684,,
+PRiSM,MolTox21,failures_of_1000,10,,
+MAP,MolTox21,failures_of_1000,772,,
+OAP,MolTox21,failures_of_1000,753,,
