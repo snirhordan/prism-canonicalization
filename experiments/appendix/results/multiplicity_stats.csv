@@ -1,0 +1,6 @@
+dataset,sampled_graphs,mean_nodes,mean_m1,mean_m2,mean_m3,mean_m_ge4,frac_simple_spectrum
+ZINC-12K,500,23.02,20.862,0.59,0.196,0.09,0.38
+ogbg-molhiv,500,25.7,21.536,0.882,0.304,0.284,0.328
+ogbg-moltox21,500,17.91,14.962,0.72,0.208,0.17,0.384
+ogbg-molclintox,500,26.56,23.344,0.592,0.252,0.244,0.286
+ogbg-molbbbp,500,23.45,20.926,0.486,0.256,0.164,0.344
