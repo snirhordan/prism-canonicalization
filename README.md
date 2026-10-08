@@ -396,7 +396,9 @@ python -m pytest                       # package: golden, invariance, FastSign, 
 
 Each experiment directory has its own `tests/` (configs, shapes, parameter counts, command-line entry points on
 synthetic data); run them inside the experiment's environment with `python -m pytest tests`. The package tests
-need only numpy and scipy; the tests that import torch are skipped without it.
+need only numpy and scipy; the tests that import torch are skipped without it. The MAP and OAP golden tests round
+projection norms to 14 decimals, so they are only reproducible with the torch versions of the paper (2.1 or 2.2;
+the `torch` extra pins `torch>=2.1,<2.3`). With a newer torch some of them fail on near-tied tie-breaks.
 
 ## Citation
 
