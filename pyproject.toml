@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "prism-canonicalization"
+version = "0.1.0"
+description = "PRiSM: Partition, Refine, Solve, Match eigenvector canonicalization"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+  { name = "Snir Hordan" },
+  { name = "Nadav Dym" },
+  { name = "Tim Seppelt" },
+]
+dependencies = ["numpy", "scipy"]
+
+[project.optional-dependencies]
+torch = ["torch"]
+dgl = ["torch", "dgl"]
+test = ["pytest", "networkx"]
+
+[tool.setuptools.packages.find]
+include = ["prism*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
