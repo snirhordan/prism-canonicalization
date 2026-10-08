@@ -50,3 +50,38 @@ canonicalization (Ma et al.)
   Adapted: the MAP and OAP sign and basis canonicalization routines.
   License: MIT, Copyright (c) 2024 PKU-ML
 
+================================================================================
+canonicalization harness (Ma et al.): molecular GNN training pipeline
+  Used in: experiments/molecular_gnn
+  Source:  https://github.com/PKU-ML/canonicalization
+  Adapted: training and evaluation loops, dataset wrappers, network wiring, configs.
+  License: MIT, Copyright (c) 2024 PKU-ML
+
+================================================================================
+SignNet-BasisNet (Lim et al.)
+  Used in: experiments/molecular_gnn/layers (deepsigns.py, gnns.py, mlp.py)
+  Source:  https://github.com/cptq/SignNet-BasisNet
+  License: MIT, Copyright (c) 2022 Derek Lim
+
+================================================================================
+gnn-lspe (Dwivedi et al.)
+  Used in: experiments/molecular_gnn/layers (pna_layer.py, pna_utils.py), experiments/molecular_gnn/nets
+  Source:  https://github.com/vijaydwivedi75/gnn-lspe
+  License: MIT, Copyright (c) 2022 Vijay Prakash Dwivedi, Anh Tuan Luu, Thomas Laurent,
+           Yoshua Bengio and Xavier Bresson
+
+================================================================================
+benchmarking-gnns (Dwivedi et al.)
+  Used in: experiments/molecular_gnn (GatedGCN layer, MLP readouts, ZINC loading, training loops)
+  Source:  https://github.com/graphdeeplearning/benchmarking-gnns
+  License: MIT, Copyright (c) 2022 Vijay Prakash Dwivedi, Chaitanya K. Joshi, Anh Tuan Luu,
+           Thomas Laurent, Yoshua Bengio, Xavier Bresson
+
+================================================================================
+PNA reference implementation (Corso et al.)
+  Used in: experiments/molecular_gnn/layers/pna_utils.py
+  Source:  https://github.com/lukecavabarrett/pna
+  License: MIT, Copyright (c) 2020 Gabriele Corso, Luca Cavalleri
+
+  The full MIT text for the molecular GNN entries is in experiments/molecular_gnn/THIRD_PARTY_NOTICES.md.
+
