@@ -20,8 +20,8 @@ with the learnable eigenvalue perturbation of `CanonLPE`/`QRRefinedLPE`).
 From the repository root:
 
 ```
-conda env create -f experiments/transformer_ogb/env_transformer.yml   # same environment as the Transformer experiments
-conda activate prism-transformer
+conda env create -p ~/envs/prism-transformer -f experiments/transformer_ogb/env_transformer.yml   # same environment as the Transformer experiments
+conda activate ~/envs/prism-transformer
 cd experiments/brec
 ```
 

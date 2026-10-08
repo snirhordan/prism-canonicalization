@@ -1,7 +1,8 @@
 # Environment of the transformer (OGB, Alchemy) and BREC experiments.
-# Create it from the repository root so that the two local packages resolve:
-#   conda env create -f experiments/transformer_ogb/env_transformer.yml
-#   conda activate prism-transformer
+# Create it with (the local `-e` paths below are relative to this file, conda resolves them
+# against the directory of the yml, so the command may be run from anywhere):
+#   conda env create -p ~/envs/prism-transformer -f experiments/transformer_ogb/env_transformer.yml
+#   conda activate ~/envs/prism-transformer
 # The versions are the ones the experiments ran with (CUDA 12.1 wheels of torch).
 name: prism-transformer
 channels:
@@ -26,5 +27,5 @@ dependencies:
       - pandas==2.3.3
       - brec==1.0.0
       - pytest
-      - -e .[torch]
-      - -e experiments/wl_transformers
+      - -e ../..[torch]
+      - -e ../wl_transformers

@@ -11,8 +11,8 @@ regression targets).  Eigenvectors are canonicalized by PRiSM, MAP or OAP from t
 From the repository root:
 
 ```
-conda env create -f experiments/transformer_ogb/env_transformer.yml
-conda activate prism-transformer
+conda env create -p ~/envs/prism-transformer -f experiments/transformer_ogb/env_transformer.yml
+conda activate ~/envs/prism-transformer
 cd experiments/transformer_ogb
 ```
 

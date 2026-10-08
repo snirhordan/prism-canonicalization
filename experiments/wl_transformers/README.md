@@ -6,8 +6,8 @@ It is an installable package; the canonicalization itself is never implemented
 here, it is always delegated to the [`prism`](../../prism) package.
 
 ```
-conda env create -f experiments/transformer_ogb/env_transformer.yml   # from the repository root
-conda activate prism-transformer
+conda env create -p ~/envs/prism-transformer -f experiments/transformer_ogb/env_transformer.yml
+conda activate ~/envs/prism-transformer
 ```
 
 installs `prism` and `wl_transformers` in editable mode (`pip install -e .[torch]`
