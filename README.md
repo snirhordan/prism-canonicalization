@@ -389,8 +389,9 @@ What is and is not known to reproduce the paper tables, cell by cell. The number
 are the paper's, not outputs of this repository.
 
 **Sign rule (all tables).**
-* Every table number was produced with the hybrid first-pivot sign rule (FastSign with an ordering heuristic;
-  the presets use `sign_rule="first_pivot"`).
+* Every table number except the BREC PRiSM row (see below) was produced with the first-pivot sign rule (FastSign
+  with an ordering heuristic; the presets use `sign_rule="first_pivot"`). Repeated eigenvalues are handled by the
+  `hybrid` or the `qr` extension, as each preset names.
 * The full Algorithm 1 (Partition, Refine, Solve with the GF(2) system, Match) is provided as preset `prism_gf2`
   and tested against the worked example of the paper (`tests/test_gf2.py`). It did not produce any table number.
 
@@ -403,8 +404,8 @@ are the paper's, not outputs of this repository.
   `molpcba_gatedgcn_plain` (0.2698 +- 0.0022). The README recommends `molpcba_gatedgcn` because its mean rounds
   to the paper's 0.272 and the plain one does not; that the eigenvalue weighting was used for this cell is
   inferred, not recorded.
-* MolPCBA SignNet, MAP and OAP numbers are taken from Ma et al. (Table 6), because the local baseline runs were
-  stopped before convergence. The GatedGCN entries (0.260, 0.268, 0.270) equal theirs. The PNA MAP and OAP entries
+* The MolPCBA SignNet, MAP and OAP GatedGCN numbers (0.260, 0.268, 0.270) are taken from Ma et al. (Table 6),
+  because the local baseline runs were stopped before convergence. The PNA MAP and OAP entries
   (0.274, 0.272) differ from theirs (0.281, 0.279); their source is not established. PNA / SignNet is "OOM" as
   reported by Ma et al. The shipped configs of these baseline cells may not reproduce the printed numbers.
 * PNA / ZINC / SignNet: the logged runs give 0.0932 +- 0.0043 (paper 0.105 +- 0.007).
@@ -415,9 +416,10 @@ are the paper's, not outputs of this repository.
 * The shipped configs encode the hyperparameters that were run and are authoritative where they differ from the
   appendix hyperparameter table: 768 hidden / 16 heads / 12 layers, 96 eigenvectors, batch size 32 (OGB) and
   64 (Alchemy), weight decay 0.1, no early stopping (test score at the best validation epoch), graph-token readout.
-* MolClinTox PRiSM 0.8576 +- 0.0038 was obtained before a later fix to the rank embedding. The current code gives
-  0.841 +- 0.050 over six seeds (0.8375 on seeds 0 to 2).
-* Alchemy: the split index files in `fine-tuning/` are the ones used for all methods. The 10,000 training indices
+* MolClinTox PRiSM 0.8576 +- 0.0038 was obtained before a later fix to how the canonical rank is computed for
+  `refine_ordering=True`. Runs of the fixed code give 0.841 +- 0.050 over six seeds (0.8375 on seeds 0 to 2).
+* Alchemy: the split index files in `fine-tuning/` are read by every Alchemy config and are identical to those of
+  the original code. The 10,000 training indices
   contain 9,789 distinct graphs (validation 997 of 1000, test 999 of 1000), and the splits overlap: 59 graphs in
   train and test, 45 in train and val, 6 in val and test. The Alchemy LPE value (0.12655 +- 0.00056) could not be
   regenerated from the available logs.
@@ -425,23 +427,25 @@ are the paper's, not outputs of this repository.
   in the logs. Alchemy MAP and OAP ran at lr 1e-3, PRiSM at 1e-4; the configs say which.
 
 **BREC (`tab:brec-comparison`).**
-* The raw per-category results behind 212 / 199 / 199 were not recovered. The launch overrides of the matched
-  ~12K-parameter set were: GNN backbone, `num_vecs` 8, embed dim 32, 2 layers, 2 heads, mean pooling,
-  12,656 parameters, one seed (2023), 20 epochs, lr 1e-4. The MAP and OAP configs shipped here match those
-  overrides. The PRiSM row of the table was run with an individualization-refinement variant
-  (`IndRefineNauty`, pynauty) that is not part of this repository. The shipped `brec_prism` and `brec_prism_qr`
-  configs are reconstructions at the same size and have not been shown to give 212.
+* The raw per-category results behind 212 / 199 / 199 were not recovered. The only matched ~12K-parameter launches
+  found (three runs of the original code whose result logs are empty) used: GNN backbone, `num_vecs` 8, embed dim
+  32, 2 layers, 2 heads, mean pooling (12,656 parameters), 20 epochs, lr 1e-4. The MAP and OAP configs shipped here
+  use those settings. The launch matching the PRiSM row used an individualization-refinement variant
+  (`IndRefineNauty`, pynauty), and the table's source file describes the row that way; this variant is not part of
+  this repository, and the link between those launches and the printed numbers is inferred. The shipped
+  `brec_prism` and `brec_prism_qr` configs are reconstructions and have not been shown to give 212.
 
 **Determinism.**
-* `eigsh` with a random start vector is used for graphs with n > 100 (transformer harness; for BREC with 8
-  eigenvectors, every graph with n > 12), so those runs are not bit-reproducible.
+* `eigsh` with a random start vector is used for graphs with n > 100 (n > 97 for LPE) in the transformer harness
+  and, for BREC with 8 eigenvectors, for every graph with n > 12, so those runs are not bit-reproducible.
 * Repeated eigenvalues make the `eigh` basis depend on the CPU and LAPACK build. Appendix counts that keep
   that basis (MAP, OAP, r-bound) move by a few graphs between machines. Reproduced vs paper, `tab:invariance`
   failures (PRiSM / MAP / OAP): ZINC 0 / 695 / 694 vs 0 / 692 / 684 and MolTox21 9 / 752 / 740 vs
   10 / 772 / 753 on one node; 0 / 677 / 678 and 8 / 770 / 756 on another. In `tab:noise-sensitivity`, PRiSM and
   OAP match on the first node; MAP at sigma 1e-8 and 1e-6 gives 441.3 and 6.0 vs 447.3 and 8.7.
-* `tab:multiplicity-stats` reproduces exactly; `tab:rbound-stats` reproduces exactly on one node and differs in a
-  few rows (at most about 1.5 percentage points; MolPCBA max r 77 vs 71) on another.
+* `tab:multiplicity-stats` reproduces exactly (to the printed precision); `tab:rbound-stats` reproduces exactly on
+  one node and differs in 6 of 12 rows on another (percentages by at most 1.6 points; MolToxCast median r 3.0 vs
+  2.5; MolPCBA max r 77 vs 71).
 * `tab:runtime-scaling` is not reproduced with threads pinned to one core: PRiSM is within 1.1 to 1.6 times the
   paper, MAP and OAP are faster, giving speed-ups of 12, 14, 13, 9, 4.9, 2.5 for n = 16 to 512 (paper 15, 17,
   16, 33, 16, 3.1).
