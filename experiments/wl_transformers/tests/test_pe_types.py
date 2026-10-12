@@ -5,7 +5,8 @@ from wl_transformers import PE_TYPES, make_canonicalizer, prism_preset_for, reso
 
 def test_registry_contains_every_reported_type():
     for name in ("LPE", "CanonLPE_min_rope", "CanonLPE_min_sinid", "CanonLPE_min",
-                 "MAP_min", "OAP_min", "CanonLPE_noeps", "MAP", "OAP", "QRRefinedLPE"):
+                 "MAP_min", "OAP_min", "CanonLPE_noeps", "MAP", "OAP", "QRRefinedLPE",
+                 "IndRefineNauty"):
         assert name in PE_TYPES
 
 
@@ -21,6 +22,8 @@ def test_unsupported_type_raises():
     ("CanonLPE_noeps", False, "brec"),
     ("QRRefinedLPE", False, "brec_qr_refined"),
     ("QRRefinedLPE", True, "brec_qr_refined"),
+    ("IndRefineNauty", False, "brec_indrefine"),
+    ("IndRefineNauty", True, "brec_indrefine"),
 ])
 def test_prism_preset_selection(pe_type, refine, preset):
     pe = resolve_pe_type(pe_type)
@@ -48,3 +51,14 @@ def test_baseline_profiles_are_the_transformer_ones():
     assert make_canonicalizer("MAP_min").use_eig_val is False
     assert make_canonicalizer("OAP_min").use_eig_val is False
     assert make_canonicalizer("OAP_min").eig_decimals == 8
+
+
+def test_indrefine_nauty_comes_from_prism():
+    pytest.importorskip("pynauty")
+    from prism import PRiSM
+
+    c = make_canonicalizer("IndRefineNauty")
+    assert isinstance(c, PRiSM) and c.needs_adjacency
+    assert c.get_config() == PRiSM.from_preset("brec_indrefine").get_config()
+    pe = resolve_pe_type("IndRefineNauty")
+    assert (pe.eps, pe.minimal_rho, pe.rank) == (False, False, None)

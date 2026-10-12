@@ -17,6 +17,7 @@ Transformer / BREC harness (``pe_type`` with ``refine_ordering``)
     ``CanonLPE_*`` + refine            transformer_refined
     ``CanonLPE_*``                     brec
     ``QRRefinedLPE``                   brec_qr_refined
+    ``IndRefineNauty``                 brec_indrefine (ordering="indrefine_nauty")
 
 Appendix experiments
     permutation-noise and runtime scaling      rebuttal_comb_lap
@@ -62,6 +63,11 @@ PRESETS = {
                                 refine_ordering=True),
     "brec": dict(_TRANSFORMER, mult_mode="hybrid", refine_ordering=False),
     "brec_qr_refined": dict(_TRANSFORMER, mult_mode="qr", refine_ordering=True),
+    # Variant of the PRiSM row of tab:brec-comparison (README, Reproducibility notes):
+    # vertex order from the projection matrices and a nauty canonical labelling,
+    # pivoted QR per eigenspace (needs pynauty and the adjacency matrix; see
+    # prism.indrefine).
+    "brec_indrefine": dict(_TRANSFORMER, ordering="indrefine_nauty"),
     # ---- appendix ---------------------------------------------------------
     "qr_refined_full": dict(_GNN, k=None, scope="full", mult_mode="qr",
                             refine_ordering=True),

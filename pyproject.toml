@@ -19,6 +19,7 @@ dependencies = ["numpy", "scipy"]
 [project.optional-dependencies]
 torch = ["torch>=2.1,<2.3", "numpy<2"]
 dgl = ["torch>=2.1,<2.3", "numpy<2", "dgl"]
+nauty = ["pynauty==2.8.6"]
 test = ["pytest", "networkx"]
 
 [tool.setuptools.packages.find]

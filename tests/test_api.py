@@ -12,8 +12,22 @@ from prism.adapters.transformer import canonicalize_eigenpairs
 from helpers import er_adjacency
 
 
+def _needs_pynauty(name):
+    return PRESETS[name].get("ordering", "spectral") == "indrefine_nauty"
+
+
+def _has_pynauty():
+    try:
+        import pynauty  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def test_every_preset_builds_and_roundtrips():
     for name in PRESETS:
+        if _needs_pynauty(name) and not _has_pynauty():
+            continue
         canon = PRiSM.from_preset(name)
         assert PRiSM(**canon.get_config()).get_config() == canon.get_config()
         assert repr(canon).startswith("PRiSM(")
@@ -49,6 +63,70 @@ def test_overrides_and_unknown_preset():
 def test_invalid_configurations_are_rejected(kwargs):
     with pytest.raises(ValueError):
         PRiSM(**kwargs)
+
+
+ORDERING_KEYS = {"ordering", "ir_order_decimals", "ir_proj_decimals"}
+
+
+def test_default_ordering_leaves_the_configuration_unchanged():
+    """The ordering arguments are listed only for a non-default ordering, so the
+    configuration (and the cache key of the molecular harness) of every other
+    preset is what it was before they existed."""
+    for name in PRESETS:
+        if _needs_pynauty(name):
+            continue
+        cfg = PRiSM.from_preset(name).get_config()
+        assert not ORDERING_KEYS & set(cfg)
+        assert len(cfg) == 15
+    assert PRiSM().ordering == "spectral" and not PRiSM().needs_adjacency
+
+
+def test_nondefault_ordering_is_part_of_the_configuration():
+    pytest.importorskip("pynauty")
+    canon = PRiSM.from_preset("brec_indrefine")
+    cfg = canon.get_config()
+    assert ORDERING_KEYS <= set(cfg) and cfg["ordering"] == "indrefine_nauty"
+    assert canon.needs_adjacency
+    assert PRiSM(**cfg).get_config() == cfg
+    assert cfg != PRiSM.from_preset("brec").get_config()
+    # the preset is the BREC numerics with the other ordering and nothing else
+    assert cfg == dict(PRiSM.from_preset("brec").get_config(), ordering="indrefine_nauty",
+                       ir_order_decimals=8, ir_proj_decimals=10)
+
+
+@pytest.mark.parametrize("kwargs", [
+    dict(ordering="nauty"),
+    dict(ordering="indrefine_nauty", mult_mode="qr", refine_ordering=True),
+    dict(ordering="indrefine_nauty", refine_ordering=True),
+    dict(ordering="indrefine_nauty", sign_rule="gf2", refine_ordering=True),
+])
+def test_invalid_ordering_configurations_are_rejected(kwargs):
+    with pytest.raises(ValueError):
+        PRiSM(**kwargs)
+
+
+def test_missing_pynauty_gives_a_clear_import_error(monkeypatch):
+    monkeypatch.setitem(sys.modules, "pynauty", None)  # `import pynauty` raises ImportError
+    with pytest.raises(ImportError, match=r"pynauty.*prism-canonicalization\[nauty\]"):
+        PRiSM(ordering="indrefine_nauty")
+    with pytest.raises(ImportError, match="pynauty"):
+        PRiSM.from_preset("brec_indrefine")
+    PRiSM.from_preset("brec")  # the default ordering never imports it
+
+
+def test_indrefine_needs_the_adjacency_matrix():
+    pytest.importorskip("pynauty")
+    A = er_adjacency(9, 0.5, 5)
+    canon = PRiSM.from_preset("brec_indrefine")
+    lam, V = canon.eigendecompose(A)
+    with pytest.raises(ValueError, match="adjacency"):
+        canon.canonicalize(V, lam)
+    with pytest.raises(ValueError, match="shape"):
+        canon.canonicalize(V, lam, adjacency=A[:5, :5])
+    # the spectral ordering ignores it
+    spectral = PRiSM.from_preset("brec")
+    np.testing.assert_array_equal(spectral.canonicalize(V, lam),
+                                  spectral.canonicalize(V, lam, adjacency=A))
 
 
 def test_import_does_not_pull_torch():

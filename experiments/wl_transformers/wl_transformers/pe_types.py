@@ -6,7 +6,7 @@ the canonical vertex rank enters the model.  Canonicalization itself is always
 delegated to the ``prism`` package:
 
 * PRiSM variants use :class:`prism.PRiSM` through a named preset
-  (``transformer_refined``, ``brec``, ``brec_qr_refined``);
+  (``transformer_refined``, ``brec``, ``brec_qr_refined``, ``brec_indrefine``);
 * MAP and OAP use :class:`prism.baselines.MAP` / :class:`prism.baselines.OAP`
   with the ``brec`` profile.
 
@@ -20,6 +20,7 @@ CanonLPE_min          PRiSM       no     min    none
 CanonLPE_min_sinid    PRiSM       no     min    sinusoidal   canonical vertex rank
 CanonLPE_min_rope     PRiSM       no     min    RoPE         canonical vertex rank
 QRRefinedLPE          PRiSM (QR)  yes    full   none         ``brec_qr_refined``
+IndRefineNauty        PRiSM (IR)  no     full   none         ``brec_indrefine``, needs pynauty
 MAP, MAP_min          MAP         no     full/min  none
 OAP, OAP_min          OAP         no     full/min  none
 ====================  ==========  =====  =====  ===========  =====================
@@ -38,7 +39,7 @@ from typing import Optional
 @dataclass(frozen=True)
 class PEType:
     name: str
-    canon: Optional[str]        # None, "prism", "prism_qr", "map", "oap"
+    canon: Optional[str]        # None, "prism", "prism_qr", "prism_indrefine", "map", "oap"
     eps: bool                   # learnable eigenvalue perturbation
     minimal_rho: bool           # single-layer rho
     rank: Optional[str] = None  # None, "sinusoidal", "rope"
@@ -52,6 +53,7 @@ PE_TYPES = {p.name: p for p in (
     PEType("CanonLPE_min_sinid", "prism", eps=False, minimal_rho=True, rank="sinusoidal"),
     PEType("CanonLPE_min_rope", "prism", eps=False, minimal_rho=True, rank="rope"),
     PEType("QRRefinedLPE", "prism_qr", eps=True, minimal_rho=False),
+    PEType("IndRefineNauty", "prism_indrefine", eps=False, minimal_rho=False),
     PEType("MAP", "map", eps=False, minimal_rho=False),
     PEType("MAP_min", "map", eps=False, minimal_rho=True),
     PEType("OAP", "oap", eps=False, minimal_rho=False),
@@ -73,12 +75,14 @@ def prism_preset_for(pe: PEType, refine_ordering: bool, override: Optional[str] 
     ``override`` (config key ``prism_preset``) takes precedence.  Otherwise the
     transformer harness uses ``transformer_refined`` when sequential ordering
     refinement is on and ``brec`` when it is off; ``QRRefinedLPE`` always uses
-    ``brec_qr_refined``.
+    ``brec_qr_refined`` and ``IndRefineNauty`` ``brec_indrefine``.
     """
     if override:
         return override
     if pe.canon == "prism_qr":
         return "brec_qr_refined"
+    if pe.canon == "prism_indrefine":
+        return "brec_indrefine"
     return "transformer_refined" if refine_ordering else "brec"
 
 
@@ -88,7 +92,7 @@ def make_canonicalizer(pe_type: str, refine_ordering: bool = False,
     pe = resolve_pe_type(pe_type)
     if pe.canon is None:
         return None
-    if pe.canon in ("prism", "prism_qr"):
+    if pe.canon in ("prism", "prism_qr", "prism_indrefine"):
         from prism import PRiSM
 
         return PRiSM.from_preset(prism_preset_for(pe, refine_ordering, prism_preset))

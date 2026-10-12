@@ -40,6 +40,7 @@ the 3 buffer eigenpairs again.  The buffer lets an eigenspace that straddles the
 | `CanonLPE_min` | `PRiSM.from_preset("transformer_refined")` | none | no | min |
 | `CanonLPE`, `CanonLPE_noeps` | `PRiSM.from_preset("brec")` | none | yes / no | full |
 | `QRRefinedLPE` | `PRiSM.from_preset("brec_qr_refined")` | none | yes | full |
+| `IndRefineNauty` | `PRiSM.from_preset("brec_indrefine")` (needs `pynauty`) | none | no | full |
 | `MAP`, `MAP_min` | `prism.baselines.MAP.from_profile("brec")` | none | no | full / min |
 | `OAP`, `OAP_min` | `prism.baselines.OAP.from_profile("brec")` | none | no | full / min |
 

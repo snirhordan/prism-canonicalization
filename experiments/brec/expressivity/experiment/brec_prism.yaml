@@ -1,5 +1,7 @@
 # @package _global_
 defaults:
   - brec_matched
-# PRiSM (preset "brec": hybrid extension, no ordering refinement).
-pe_type: CanonLPE_noeps
+# PRiSM with the individualization-refinement ordering (pe_type IndRefineNauty, preset
+# "brec_indrefine"): the variant whose launch matches the BREC PRiSM row.  Needs pynauty
+# (pip install pynauty==2.8.6, or the `nauty` extra of prism-canonicalization).
+pe_type: IndRefineNauty

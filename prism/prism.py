@@ -16,6 +16,12 @@ Spectrum
 Canonicalization
     ``sign_rule``, ``mult_mode``, ``refine_ordering``, ``pivot_threshold``
     choose how each eigenspace is resolved.
+Ordering
+    ``ordering`` selects how the vertex order that picks the pivots is built:
+    from the norm-value signature (``spectral``, the default, used by all
+    table cells but one) or from the projection matrices and a nauty
+    canonical labelling (``indrefine_nauty``, the BREC row; needs the
+    optional ``pynauty`` and the adjacency matrix).
 Numerics
     ``tol_profile`` and ``quantize_float32`` choose the tolerance profile and
     whether eigenpairs pass through float32 first (as in the transformer
@@ -31,13 +37,14 @@ from typing import Optional
 
 import numpy as np
 
-from . import core, gf2, operators
+from . import core, gf2, indrefine, operators
 
 _SIGN_RULES = ("first_pivot", "gf2")
 _MULT_MODES = ("hybrid", "qr")
 _SCOPES = ("full", "window")
 _KEEP = ("last", "first")
 _WEIGHTS = (None, "eigval", "inv_sqrt_lap", "heat")
+_ORDERINGS = ("spectral", "indrefine_nauty")
 
 
 @dataclass
@@ -115,6 +122,22 @@ class PRiSM:
         (default 1.0).
     gf2_decimals : int
         Rounding precision of the ``gf2`` sign rule.
+    ordering : {"spectral", "indrefine_nauty"}
+        ``spectral`` orders the vertices by the norm-value signature (and, with
+        ``refine_ordering``, by the already canonical columns).
+        ``indrefine_nauty`` orders them, per eigenspace, by the diagonal and the
+        sorted absolute row of the eigenspace projection matrix with a nauty
+        canonical labelling of the graph as final tie-break
+        (:mod:`prism.indrefine`); all eigenspaces are then resolved by pivoted
+        QR.  It needs ``pynauty`` and the adjacency matrix (``adjacency=`` of
+        :meth:`canonicalize`; :meth:`pos_enc` and :meth:`spectrum` pass theirs),
+        and ``sign_rule``, ``mult_mode`` and ``refine_ordering`` must keep their
+        defaults because they do not apply to it.
+    ir_order_decimals : int
+        ``indrefine_nauty``: decimals to which the projection-matrix diagonals
+        (vertex colours of nauty) and the ordering keys are rounded.
+    ir_proj_decimals : int
+        ``indrefine_nauty``: decimals to which the projection matrices are rounded.
     """
 
     def __init__(
@@ -135,6 +158,9 @@ class PRiSM:
         weight: Optional[str] = None,
         weight_param: Optional[float] = None,
         gf2_decimals: int = gf2.DECIMALS,
+        ordering: str = "spectral",
+        ir_order_decimals: int = 8,
+        ir_proj_decimals: int = 10,
     ):
         if operator not in operators.OPERATORS:
             raise ValueError(f"operator must be one of {operators.OPERATORS}")
@@ -159,6 +185,15 @@ class PRiSM:
             raise ValueError("window_buffer must be >= 0 and needs scope='window'")
         if k is not None and k < 0:
             raise ValueError("k must be non-negative")
+        if ordering not in _ORDERINGS:
+            raise ValueError(f"ordering must be one of {_ORDERINGS}")
+        if ordering == "indrefine_nauty":
+            if sign_rule != "first_pivot" or mult_mode != "hybrid" or refine_ordering:
+                raise ValueError("ordering='indrefine_nauty' resolves every eigenspace by "
+                                 "pivoted QR in its own ordering; sign_rule, mult_mode and "
+                                 "refine_ordering do not apply and must keep their defaults "
+                                 "('first_pivot', 'hybrid', False)")
+            indrefine.require_pynauty()
 
         self.operator = operator
         self.drop_trivial = drop_trivial
@@ -175,6 +210,9 @@ class PRiSM:
         self.weight = weight
         self.weight_param = weight_param
         self.gf2_decimals = gf2_decimals
+        self.ordering = ordering
+        self.ir_order_decimals = ir_order_decimals
+        self.ir_proj_decimals = ir_proj_decimals
         self.tol = core.make_tolerances(tol_profile, mult_mode)
 
     # ------------------------------------------------------------------ setup
@@ -190,9 +228,19 @@ class PRiSM:
         kwargs.update(overrides)
         return cls(**kwargs)
 
+    @property
+    def needs_adjacency(self) -> bool:
+        """Whether :meth:`canonicalize` needs the adjacency matrix (``indrefine_nauty``)."""
+        return self.ordering != "spectral"
+
     def get_config(self) -> dict:
-        """The constructor arguments of this instance."""
-        return dict(
+        """The constructor arguments of this instance.
+
+        The arguments of the ``ordering`` layer are listed only for a non-default
+        ordering, so the configuration (and with it the cache key of the molecular
+        harness) of every ``spectral`` instance is the same as before they existed.
+        """
+        cfg = dict(
             operator=self.operator, drop_trivial=self.drop_trivial, k=self.k,
             scope=self.scope, window_buffer=self.window_buffer, keep=self.keep,
             sign_rule=self.sign_rule, mult_mode=self.mult_mode,
@@ -201,6 +249,10 @@ class PRiSM:
             quantize_float32=self.quantize_float32, weight=self.weight,
             weight_param=self.weight_param, gf2_decimals=self.gf2_decimals,
         )
+        if self.ordering != "spectral":
+            cfg.update(ordering=self.ordering, ir_order_decimals=self.ir_order_decimals,
+                       ir_proj_decimals=self.ir_proj_decimals)
+        return cfg
 
     def __repr__(self) -> str:
         args = ", ".join(f"{k}={v!r}" for k, v in self.get_config().items())
@@ -208,7 +260,7 @@ class PRiSM:
 
     # -------------------------------------------------------- canonicalization
 
-    def canonicalize(self, V, lam, return_info: bool = False):
+    def canonicalize(self, V, lam, return_info: bool = False, adjacency=None):
         """Canonicalize eigenvectors given with their eigenvalues.
 
         Parameters
@@ -219,6 +271,10 @@ class PRiSM:
         return_info : bool
             Return a :class:`CanonInfo` (vertex order, rank, norm signature)
             instead of only the canonical eigenvectors.
+        adjacency : (n, n) array, optional
+            Adjacency matrix of the graph (only its support is used).  Required
+            by ``ordering="indrefine_nauty"`` (see :attr:`needs_adjacency`),
+            ignored otherwise.
 
         Returns
         -------
@@ -229,6 +285,9 @@ class PRiSM:
         if self.quantize_float32:
             lam = lam.astype(np.float32).astype(np.float64)
             V = V.astype(np.float32).astype(np.float64)
+
+        if self.ordering == "indrefine_nauty":
+            return self._canonicalize_indrefine(V, lam, adjacency, return_info)
 
         tol = self.tol
         mults = core.detect_multiplicities(lam, tol.mult_rtol, tol.mult_atol)
@@ -254,6 +313,22 @@ class PRiSM:
             norm_sig=core.compute_norm_signature(V, mults),
             multiplicities=mults,
         )
+
+    def _canonicalize_indrefine(self, V, lam, adjacency, return_info):
+        if adjacency is None:
+            raise ValueError("ordering='indrefine_nauty' needs the adjacency matrix: "
+                             "pass adjacency=A to canonicalize (pos_enc and spectrum do)")
+        Vc, order, mults = indrefine.canonicalize(
+            V, lam, adjacency, threshold=self.pivot_threshold,
+            order_decimals=self.ir_order_decimals, proj_decimals=self.ir_proj_decimals)
+        if not return_info:
+            return Vc
+        n = V.shape[0]
+        rank = np.zeros(n, dtype=np.int64)
+        rank[order] = np.arange(n)
+        return CanonInfo(V=Vc, order=order, rank=rank,
+                         norm_sig=core.compute_norm_signature(V, mults),
+                         multiplicities=mults)
 
     def _gf2_flip_mask(self, U1: np.ndarray) -> np.ndarray:
         return gf2.sign_vector(U1, self.gf2_decimals, fast_path=True) == 1
@@ -308,9 +383,10 @@ class PRiSM:
         lam, V = self.eigendecompose(A)
         ncols = lam.shape[0]
         dim = ncols if k is None else min(ncols, k)
+        adj = operators.as_dense_adjacency(A) if self.needs_adjacency else None
 
         if self.scope == "full":
-            Vc = self.canonicalize(V, lam)
+            Vc = self.canonicalize(V, lam, adjacency=adj)
             lo, hi = self._kept_slice(ncols, dim)
             return lam[lo:hi], Vc[:, lo:hi]
 
@@ -319,7 +395,7 @@ class PRiSM:
             wlo, whi = ncols - win, ncols
         else:
             wlo, whi = 0, win
-        Vc = self.canonicalize(V[:, wlo:whi], lam[wlo:whi])
+        Vc = self.canonicalize(V[:, wlo:whi], lam[wlo:whi], adjacency=adj)
         lam_w = lam[wlo:whi]
         lo, hi = self._kept_slice(win, dim)
         return lam_w[lo:hi], Vc[:, lo:hi]

@@ -12,7 +12,7 @@ from __future__ import annotations
 import numpy as np
 
 
-def canonicalize_eigenpairs(eigvals, eigvecs, canon, num_vecs: int) -> dict:
+def canonicalize_eigenpairs(eigvals, eigvecs, canon, num_vecs: int, adjacency=None) -> dict:
     """Canonicalize NaN-padded eigenpairs and return the harness features.
 
     Parameters
@@ -21,6 +21,8 @@ def canonicalize_eigenpairs(eigvals, eigvecs, canon, num_vecs: int) -> dict:
     eigvecs : (n, c) array, NaN columns for missing eigenpairs.
     canon : :class:`prism.PRiSM`.
     num_vecs : width of the padded signature.
+    adjacency : (n, n) array, only needed when ``canon.needs_adjacency`` (the
+        ``indrefine_nauty`` ordering).
 
     Returns a dict with ``eigvecs`` (float32, input shape), ``norm_sig``
     (float32, (n, num_vecs)), ``canon_rank`` and ``canon_order`` (int64, (n,)).
@@ -32,7 +34,8 @@ def canonicalize_eigenpairs(eigvals, eigvecs, canon, num_vecs: int) -> dict:
     out = {"eigvecs": eigvecs.astype(np.float32)}
     if not valid.any():
         return out
-    info = canon.canonicalize(eigvecs[:, valid], eigvals[valid], return_info=True)
+    info = canon.canonicalize(eigvecs[:, valid], eigvals[valid], return_info=True,
+                              adjacency=adjacency)
     eigvecs[:, valid] = info.V
     out["eigvecs"] = eigvecs.astype(np.float32)
     sig = np.zeros((n, num_vecs), dtype=np.float64)

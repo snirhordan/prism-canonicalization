@@ -61,7 +61,7 @@ def test_rank_embeddings_change_the_output():
 
 @pytest.mark.parametrize("pe_type,expected", [
     ("MAP", 12656), ("OAP", 12656), ("CanonLPE_noeps", 12656), ("CanonLPE", 12664),
-    ("QRRefinedLPE", 12664), ("MAP_min", 9520),
+    ("QRRefinedLPE", 12664), ("MAP_min", 9520), ("IndRefineNauty", 12656),
 ])
 def test_matched_brec_gnn_parameter_counts(pe_type, expected):
     c = cfg(pe_type, 8, num_layers=2, embed_dim=32)

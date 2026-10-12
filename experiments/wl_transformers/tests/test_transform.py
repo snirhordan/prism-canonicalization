@@ -70,6 +70,37 @@ def test_prism_pe_is_permutation_equivariant(pe_type, refine):
     assert np.array_equal(a.canon_rank.numpy()[perm], b.canon_rank.numpy())
 
 
+def test_indrefine_nauty_transform():
+    """IndRefineNauty receives the adjacency from the edge list and attaches nauty's vertex order."""
+    pytest.importorskip("pynauty")
+    G = generic_graph()
+    n = G.number_of_nodes()
+    d = transform("IndRefineNauty", num_vecs=8)(make_graph(G))
+    assert d.eigvecs.shape == (n, 8) and not torch.isnan(d.eigvecs).any()
+    assert sorted(d.canon_order.tolist()) == list(range(n))
+    assert torch.equal(d.canon_rank[d.canon_order], torch.arange(n))
+    # a graph smaller than num_vecs is NaN padded like the other types
+    d = transform("IndRefineNauty", num_vecs=96)(make_graph(nx.petersen_graph()))
+    assert d.eigvecs.shape == (10, 96)
+    assert torch.isnan(d.eigvecs[:, 10:]).all() and not torch.isnan(d.eigvecs[:, :10]).any()
+
+
+def test_indrefine_nauty_pe_is_permutation_equivariant():
+    pytest.importorskip("pynauty")
+    G = generic_graph(n=13, seed=7)
+    n = G.number_of_nodes()
+    perm = np.random.RandomState(1).permutation(n)
+    new_of = {int(old): new for new, old in enumerate(perm)}
+    H = nx.Graph()
+    H.add_nodes_from(range(n))
+    H.add_edges_from((new_of[u], new_of[v]) for u, v in G.edges)
+    t = transform("IndRefineNauty", num_vecs=8)
+    a, b = t(make_graph(G)), t(make_graph(H))
+    # holds when the graph has no non-trivial automorphism, as generic ER graphs do not
+    assert np.allclose(a.eigvecs.numpy()[perm], b.eigvecs.numpy(), atol=1e-4)
+    assert np.array_equal(a.canon_rank.numpy()[perm], b.canon_rank.numpy())
+
+
 def test_lpe_has_no_canonicalization_buffer():
     G = generic_graph(n=120, seed=1)
     d = transform("LPE")(make_graph(G))  # n > num_vecs: partial eigendecomposition

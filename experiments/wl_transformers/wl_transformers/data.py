@@ -249,8 +249,13 @@ class Transform:
     def _canonicalize(self, data):
         canon = self.canonicalizer
         if isinstance(canon, PRiSM):
+            adjacency = None
+            if canon.needs_adjacency:
+                adjacency = np.zeros((data.num_nodes, data.num_nodes), dtype=np.float64)
+                adjacency[data.edge_index[0].numpy(), data.edge_index[1].numpy()] = 1.0
             out = canonicalize_eigenpairs(
-                data.eigvals[0].numpy(), data.eigvecs.numpy(), canon, self.num_vecs)
+                data.eigvals[0].numpy(), data.eigvecs.numpy(), canon, self.num_vecs,
+                adjacency=adjacency)
             data.eigvecs = torch.from_numpy(out["eigvecs"]).float()
             if "canon_rank" in out:
                 data.canon_rank = torch.from_numpy(out["canon_rank"]).long()

@@ -85,6 +85,36 @@ def test_transformer_window(golden, i):
                                rtol=0, atol=ATOL)
 
 
+# ----------------------------------------------- IndRefineNauty (BREC PRiSM row)
+
+IR_KEYS = [("brec_indrefine", None), ("brec_indrefine_window_k8", 8)]
+
+
+@pytest.mark.parametrize("i", IDS, ids=_id)
+@pytest.mark.parametrize("key,num_vecs", IR_KEYS, ids=[k for k, _ in IR_KEYS])
+def test_indrefine_nauty_matches_live(golden, key, num_vecs, i):
+    """Preset ``brec_indrefine`` against the live ``indrefine_nauty_canonicalize``: eigenvectors
+    (atol 1e-8) and the nauty vertex order (exact), on the full stored spectrum and, as the BREC
+    harness does, on the first ``num_vecs + 3`` eigenpairs."""
+    pytest.importorskip("pynauty")
+    if f"fn__{key}__V" not in golden.z.files:
+        pytest.skip("golden.npz has no IndRefineNauty keys; run dev/make_golden.py --only-indrefine")
+    lam, V = golden.spec("norm_lap_f32", i)
+    canon = PRiSM.from_preset("brec_indrefine")
+    if num_vecs is None:
+        w, keep = lam.shape[0], lam.shape[0]
+    else:
+        w, keep = min(lam.shape[0], num_vecs + canon.window_buffer), min(lam.shape[0], num_vecs)
+    info = canon.canonicalize(V[:, :w], lam[:w], return_info=True, adjacency=golden.adj(i))
+    np.testing.assert_allclose(info.V[:, :keep],
+                               golden.fn_shape(key, i, (V.shape[0], keep)), rtol=0, atol=ATOL)
+    order = golden.fn_order(key, i)
+    np.testing.assert_array_equal(info.order, order)
+    rank = np.empty_like(order)
+    rank[order] = np.arange(order.size)
+    np.testing.assert_array_equal(info.rank, rank)
+
+
 # --------------------------------------------------------------------- PE level
 
 PE_PRESETS = ["zinc_gatedgcn", "zinc_gatedgcn_heat_t2", "zinc_pna", "moltox21_gatedgcn",

@@ -11,14 +11,19 @@ Usage::
     LIVE_SRC=/path/containing/the/checkouts \\
         python dev/make_golden.py [--out tests/fixtures/golden.npz]
 
+    # add only the IndRefineNauty keys to an existing fixture (graphs, spectra and
+    # all other keys are left as they are; needs only numpy, scipy and pynauty)
+    LIVE_SRC=... python dev/make_golden.py --only-indrefine
+
 ``LIVE_SRC`` must contain these checkouts (read-only; nothing is written there)::
 
     $LIVE_SRC/canonicalization-fresh      molecular GNN harness
-    $LIVE_SRC/brec_pe_canon               transformer / BREC harness
+    $LIVE_SRC/brec_pe_canon               transformer / BREC harness (spectral_m3.py,
+                                          map_oap.py, indrefine.py)
     $LIVE_SRC/WL-Simple/experiments/thm1_demo/prism_signsolve.py   GF(2) reference
 
-The environment must provide numpy, scipy, torch, dgl and networkx (the
-molecular GNN environment of the paper does).
+The environment must provide numpy, scipy, torch, dgl, networkx and pynauty (the
+molecular GNN environment of the paper plus pynauty does).
 """
 
 from __future__ import annotations
@@ -182,13 +187,109 @@ def spectra(A):
     return {"norm_adj": na, "norm_lap_f32": nl, "comb_lap": cl}
 
 
+# ---------------------------------------------------- IndRefineNauty (BREC row)
+
+IR_NUM_VECS = 8      # BREC launch: num_vecs 8 ...
+IR_BUFFER = 3        # ... and canon_buffer 3 -> the first 11 eigenpairs are canonicalized
+
+
+def indrefine_goldens(out, mats, norm_lap_specs):
+    """Add the ``fn__brec_indrefine*`` keys: the live ``indrefine_nauty_canonicalize`` applied to
+    the stored float32 normalized-Laplacian eigenpairs, the way ``Transform`` of the live
+    harness calls it (``edge_index`` of the graph, all valid columns), on the full spectrum and
+    on the first ``num_vecs + buffer`` columns."""
+    indrefine = load_module("live_brec_indrefine", os.path.join(BREC, "indrefine.py"))
+
+    def live(A, lam, V):
+        edge_index = np.stack(np.nonzero(A))
+        Vc, order, rank = indrefine.indrefine_nauty_canonicalize(
+            V, lam, edge_index=edge_index, num_nodes=A.shape[0])
+        assert np.array_equal(rank[order], np.arange(A.shape[0]))
+        return Vc, order
+
+    full_V, full_order, win_V, win_order = [], [], [], []
+    for A, (lam, V) in zip(mats, norm_lap_specs):
+        lam = np.asarray(lam, dtype=np.float64)
+        V = np.asarray(V, dtype=np.float64)
+        Vc, order = live(A, lam, V)
+        full_V.append(Vc)
+        full_order.append(order)
+        w = min(lam.shape[0], IR_NUM_VECS + IR_BUFFER)
+        Vw, order_w = live(A, lam[:w], V[:, :w])
+        win_V.append(Vw[:, :min(lam.shape[0], IR_NUM_VECS)])
+        win_order.append(order_w)
+    for key, Vs, orders in (("brec_indrefine", full_V, full_order),
+                            ("brec_indrefine_window_k8", win_V, win_order)):
+        out[f"fn__{key}__V"], out[f"fn__{key}__off"] = pack(Vs)
+        out[f"fn__{key}__order"], out[f"fn__{key}__order_off"] = pack(orders)
+    import pynauty
+
+    try:
+        blob = subprocess.check_output(
+            ["git", "hash-object", os.path.join(BREC, "indrefine.py")],
+            stderr=subprocess.DEVNULL).decode().strip()[:12]
+    except Exception:
+        blob = "unknown"
+    try:
+        last = subprocess.check_output(
+            ["git", "-C", BREC, "log", "-1", "--format=%h", "--", "indrefine.py"],
+            stderr=subprocess.DEVNULL).decode().strip()
+        dirty = subprocess.check_output(
+            ["git", "-C", BREC, "status", "--porcelain", "--", "indrefine.py"],
+            stderr=subprocess.DEVNULL).decode().strip()
+        last += "+modified" if dirty else ""
+    except Exception:
+        last = "unknown"
+    out["meta__live_rev_indrefine"] = np.array([
+        f"brec_pe_canon indrefine.py: last commit {last}, blob {blob}",
+        f"pynauty {pynauty.__version__}, numpy {np.__version__}",
+    ])
+
+
+def stored_spectra(z, op):
+    """The ``(lam, V)`` lists of the stored spectra of ``op`` in an existing fixture."""
+    sizes = z["meta__sizes"]
+    lam_flat, lam_off = z[f"spec__{op}__lam"], z[f"spec__{op}__lam_off"]
+    V_flat, V_off = z[f"spec__{op}__V"], z[f"spec__{op}__V_off"]
+    out = []
+    for i, n in enumerate(sizes):
+        n = int(n)
+        c = n - 1 if op == "norm_adj" else n
+        out.append((lam_flat[lam_off[i]:lam_off[i + 1]].reshape(c),
+                    V_flat[V_off[i]:V_off[i + 1]].reshape(n, c)))
+    return out
+
+
+def stored_adjacencies(z):
+    return [z["meta__adj"][z["meta__adj_off"][i]:z["meta__adj_off"][i + 1]]
+            .reshape(int(n), int(n)).astype(np.float64) for i, n in enumerate(z["meta__sizes"])]
+
+
+def add_indrefine_to_fixture(path):
+    """Add only the IndRefineNauty keys to an existing fixture; every other key is kept as is."""
+    z = dict(np.load(path))
+    old_keys = set(z)
+    indrefine_goldens(z, stored_adjacencies(z), stored_spectra(z, "norm_lap_f32"))
+    np.savez_compressed(path, **z)
+    new = sorted(set(z) - old_keys)
+    print(f"added {len(new)} keys to {path}: {os.path.getsize(path) / 1e6:.2f} MB")
+    for k in new:
+        print("  ", k)
+
+
 # --------------------------------------------------------------------- main
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "tests",
                                                   "fixtures", "golden.npz"))
+    ap.add_argument("--only-indrefine", action="store_true",
+                    help="add only the IndRefineNauty keys to the existing --out fixture")
     args = ap.parse_args()
+
+    if args.only_indrefine:
+        add_indrefine_to_fixture(os.path.abspath(args.out))
+        return
 
     import torch
 
@@ -284,6 +385,9 @@ def main():
         Vc = brec.spectral_m3_canonicalize(V[:, :w], lam[:w], refine_ordering=True)
         wins.append(Vc[:, :min(lam.shape[0], k_win)])
     out["fn__brec_window_k6__V"], out["fn__brec_window_k6__off"] = pack(wins)
+
+    # IndRefineNauty (the BREC PRiSM row): live indrefine.py on the same spectra
+    indrefine_goldens(out, mats, [s["norm_lap_f32"] for s in specs])
 
     # ---- PE-level goldens (live DGL wrappers) ------------------------------
     pe_cases = {

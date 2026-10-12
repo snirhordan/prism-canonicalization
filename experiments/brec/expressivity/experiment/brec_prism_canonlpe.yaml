@@ -1,0 +1,7 @@
+# @package _global_
+defaults:
+  - brec_matched
+# PRiSM with the norm-signature ordering (preset "brec": hybrid extension, no ordering
+# refinement).  This was the shipped `brec_prism` before IndRefineNauty was added; kept for
+# comparison.
+pe_type: CanonLPE_noeps

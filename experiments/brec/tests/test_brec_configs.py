@@ -15,7 +15,8 @@ spec.loader.exec_module(brec_benchmark)
 
 # experiment -> (pe_type, PRiSM preset or baseline class name, parameters)
 ROWS = {
-    "brec_prism": ("CanonLPE_noeps", "brec", 12656),
+    "brec_prism": ("IndRefineNauty", "brec_indrefine", 12656),
+    "brec_prism_canonlpe": ("CanonLPE_noeps", "brec", 12656),
     "brec_prism_qr": ("QRRefinedLPE", "brec_qr_refined", 12664),
     "brec_map": ("MAP", "MAP", 12656),
     "brec_oap": ("OAP", "OAP", 12656),
@@ -45,6 +46,19 @@ def test_matched_architecture(name):
         from prism import PRiSM
 
         assert c.get_config() == PRiSM.from_preset(canon).get_config()
+
+
+def test_brec_prism_matches_the_indrefine_launch():
+    """Hyperparameters of the launch behind the PRiSM row (backbone gnn, num_vecs 8,
+    embed_dim 32, 2 layers, 2 heads, mean pooling, 20 epochs, lr 1e-4)."""
+    with initialize_config_dir(config_dir=EXPRESSIVITY, version_base=None):
+        cfg = compose(config_name="config", overrides=["+experiment=brec_prism"])
+    assert (cfg.backbone, cfg.pe_type, cfg.num_vecs, cfg.embed_dim, cfg.num_layers,
+            cfg.num_heads, cfg.pooling) == ("gnn", "IndRefineNauty", 8, 32, 2, 2, "mean")
+    assert cfg.epochs == 20 and cfg.batch_size == 16 and cfg.output_dim == 16
+    assert brec_benchmark.LEARNING_RATE == 1e-4
+    c = make_canonicalizer(cfg.pe_type, cfg.refine_ordering, cfg.prism_preset)
+    assert c.ordering == "indrefine_nauty" and c.needs_adjacency
 
 
 def test_part_sizes():

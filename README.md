@@ -38,7 +38,12 @@ cd prism-canonicalization
 pip install -e .            # numpy, scipy
 pip install -e ".[torch]"   # + torch, for prism.baselines.MAP / OAP
 pip install -e ".[dgl]"     # + torch and dgl, for the DGL adapter
+pip install -e ".[nauty]"   # + pynauty, for ordering="indrefine_nauty" (preset brec_indrefine)
 ```
+
+`pynauty` (pinned to 2.8.6, the version the tests were run with) is licensed under the GPL-3.0-or-later and is
+installed separately; it is imported only when that ordering is requested, and a missing install raises an
+`ImportError` that names the extra.
 
 Each experiment has its own pinned environment file. They do not share a Python environment because the
 backbones need different versions of torch (2.1 for the Transformers, 2.2 for the DGL GNNs):
@@ -46,7 +51,7 @@ backbones need different versions of torch (2.1 for the Transformers, 2.2 for th
 | experiment | environment file | stack |
 |---|---|---|
 | `experiments/molecular_gnn` | `env_molecular.yml` | Python 3.10, torch 2.2.0+cu118, dgl 2.1.0+cu118, ogb 1.3.6, numpy 1.26.4 |
-| `experiments/transformer_ogb`, `experiments/brec` | `experiments/transformer_ogb/env_transformer.yml` | Python 3.10, torch 2.1.0 (CUDA 12.1), torch_geometric 2.4.0, ogb 1.3.6, hydra 1.3.2, `brec` 1.0.0, numpy 1.26.4 |
+| `experiments/transformer_ogb`, `experiments/brec` | `experiments/transformer_ogb/env_transformer.yml` | Python 3.10, torch 2.1.0 (CUDA 12.1), torch_geometric 2.4.0, ogb 1.3.6, hydra 1.3.2, `brec` 1.0.0, pynauty 2.8.6, numpy 1.26.4 |
 | `experiments/appendix` | `env_appendix.yml` | Python 3.10, CPU torch 2.2.0, torch_geometric 2.4.0, ogb 1.3.6, numpy 1.26.4 |
 
 Create them with `conda env create -p <prefix> -f <file>` and set `PYTHONNOUSERSITE=1` while creating and
@@ -82,6 +87,7 @@ prism/                      the package
   prism.py                  class PRiSM, the single entry point
   presets.py                named configurations, one per experimental setting
   core.py, gf2.py           canonicalization procedures; the four stages Partition, Refine, Solve, Match
+  indrefine.py              the nauty / projection-matrix vertex ordering (ordering="indrefine_nauty")
   operators.py              normalized adjacency, normalized and combinatorial Laplacian
   baselines/                MAP, OAP (adapted from PKU-ML), lap_pe, random_sign_flip
   adapters/                 dgl.py (DGL graphs), transformer.py (canonical order and rank)
@@ -130,14 +136,17 @@ varies with the BLAS/LAPACK build and the processor (see `experiments/appendix/R
   the first 8 Laplacian eigenvectors; embedding size 32, 2 layers, about 12K parameters, identical for all rows.
 * **Environment:** the Transformer environment (`experiments/transformer_ogb/env_transformer.yml`); the `brec`
   package downloads and converts the dataset on first use.
-* **Presets:** PRiSM `brec` (and `brec_qr_refined`, QR for every multiplicity), MAP and OAP with profile `brec`.
+* **Presets:** PRiSM `brec_indrefine` (individualization-refinement ordering through pynauty, then spectral
+  canonicalization; see the notes below), MAP and OAP with profile `brec`. Two further PRiSM variants are shipped
+  for comparison: `brec` (norm-signature ordering) and `brec_qr_refined` (QR for every multiplicity).
 * **Seeds:** none beyond the fixed `seed_everything(2022)` of the `brec` package; each pair trains its own model.
 * **Smoke check:** about 10 s for two pairs on an A40.
 
 ```
 cd experiments/brec
-python expressivity/brec_benchmark.py +experiment=brec_prism       # PRiSM
-python expressivity/brec_benchmark.py +experiment=brec_prism_qr    # PRiSM, QR for every multiplicity
+python expressivity/brec_benchmark.py +experiment=brec_prism           # PRiSM, IndRefineNauty ordering
+python expressivity/brec_benchmark.py +experiment=brec_prism_canonlpe  # PRiSM, norm-signature ordering (preset brec)
+python expressivity/brec_benchmark.py +experiment=brec_prism_qr        # PRiSM, QR for every multiplicity
 python expressivity/brec_benchmark.py +experiment=brec_map         # MAP
 python expressivity/brec_benchmark.py +experiment=brec_oap         # OAP
 python expressivity/brec_benchmark.py +experiment=brec_prism smoke=true
@@ -331,12 +340,17 @@ Paper: number of validation graphs, mean nodes, share with r=0, share with exact
 | canonicalization | `sign_rule` | `first_pivot` (as run in all table cells; FastSign when the signature is injective) or `gf2` (Refine + Solve of Algorithm 1) |
 | | `mult_mode` | `hybrid` (Householder/Givens for m<=3, QR for m>=4) or `qr` (QR for every m, unique-signature pivots) |
 | | `refine_ordering` | sequential refinement of the vertex order (required by `qr` and `gf2`) |
+| ordering | `ordering` | `spectral` (norm-value signature, all table cells but the BREC row) or `indrefine_nauty` (eigenspace projection matrices and a nauty canonical labelling, then pivoted QR; needs `pynauty` and the adjacency matrix; `sign_rule`, `mult_mode` and `refine_ordering` must keep their defaults) |
+| | `ir_order_decimals`, `ir_proj_decimals` | `indrefine_nauty` only: rounding of the vertex colours and ordering keys (8) and of the projection matrices (10) |
 | numerics | `tol_profile` | `adaptive` (relative snapping, eps floor) or `legacy_round` (fixed decimals) |
 | | `quantize_float32` | pass eigenpairs through float32 first (transformer / BREC storage) |
 | post-processing | `weight`, `weight_param` | `eigval`, `inv_sqrt_lap` (eps), `heat` (t) |
 
-Methods: `canonicalize`, `eigendecompose`, `spectrum`, `pos_enc`, `from_preset`,
-`get_config`, and the stand-alone procedures `canonicalize_simple` (Algorithm 1)
+Methods: `canonicalize` (`adjacency=` is required by `ordering="indrefine_nauty"`, which `pos_enc` and
+`spectrum` supply themselves), `eigendecompose`, `spectrum`, `pos_enc`, `from_preset`, `get_config` (the
+`ordering` arguments appear only when the ordering is not `spectral`, so the configuration, and the
+positional-encoding cache key of the molecular harness, of every other instance is unchanged), and the
+stand-alone procedures `canonicalize_simple` (Algorithm 1)
 and `fastsign` (Algorithm 2). `prism.gf2` exposes the four stages.
 
 Baselines (`prism.baselines`): `MAP`, `OAP` (adapted from the reference code of
@@ -357,7 +371,8 @@ checks this against outputs of the original implementations.
 | `molpcba_gatedgcn` | `spectral_qr_refined_eigval` | `tab:molecular-results`, MolPCBA / GatedGCN |
 | `molpcba_pna` | `spectral_qr_refined_eigval` | `tab:molecular-results`, MolPCBA / PNA |
 | `transformer_refined` | `CanonLPE_*` with `refine_ordering` | `tab:transformer-results`: MolHIV, MolClinTox, MolBBBP, Alchemy |
-| `brec`, `brec_qr_refined` | `CanonLPE_*`, `QRRefinedLPE` | `tab:brec-comparison` |
+| `brec_indrefine` | `IndRefineNauty` | `tab:brec-comparison`, PRiSM row (see the reproducibility notes) |
+| `brec`, `brec_qr_refined` | `CanonLPE_*`, `QRRefinedLPE` | `tab:brec-comparison` variants, not the printed row |
 | `qr_refined_full` | `spectral_qr_refined` on all eigenpairs | `tab:invariance` |
 | `rebuttal_comb_lap` | `spectral_m3(refine_ordering=True)` on D - A | `tab:noise-sensitivity`, `tab:runtime-scaling` |
 | (no preset) | `prism.gf2.partition_stage` | `tab:rbound-stats` |
@@ -370,7 +385,8 @@ canonical order and rank that they consume.
 
 ## Notes on the correspondence between paper and code
 
-* All table cells use the `first_pivot` sign rule. For a simple eigenvalue (m = 1) it flips every
+* All table cells use a `first_pivot` sign rule; in the BREC PRiSM row the vertex order that picks the pivot is
+  the `indrefine_nauty` ordering instead of the norm-signature ordering (see the BREC notes). For a simple eigenvalue (m = 1) it flips every
   column so that its first significant entry in the canonical vertex order is positive, which is FastSign
   with an ordering heuristic; the GF(2) system of Algorithm 1 (Refine and Solve) was not part of the
   table runs. It is available as `sign_rule="gf2"` (preset `prism_gf2`). Repeated eigenvalues are
@@ -378,7 +394,9 @@ canonical order and rank that they consume.
 * The transformer and BREC harness canonicalizes float32 eigenpairs with
   fixed-decimal tolerances (`legacy_round`); the molecular harness uses float64
   and relative tolerances (`adaptive`). Both are exposed so that either can be
-  reproduced exactly.
+  reproduced exactly. The `indrefine_nauty` ordering has its own rounding
+  (`ir_order_decimals`, `ir_proj_decimals`) and groups eigenvalues by a relative
+  tolerance of 1e-10 (`prism.indrefine.detect_multiplicities`), as the research code does.
 * Cells with more than one candidate configuration (ZINC / GatedGCN, MolPCBA /
   GatedGCN) are listed in the preset table above; the extra presets carry the
   alternative.
@@ -389,9 +407,10 @@ What is and is not known to reproduce the paper tables, cell by cell. The number
 are the paper's, not outputs of this repository.
 
 **Sign rule (all tables).**
-* Every table number except the BREC PRiSM row (see below) was produced with the first-pivot sign rule (FastSign
-  with an ordering heuristic; the presets use `sign_rule="first_pivot"`). Repeated eigenvalues are handled by the
-  `hybrid` or the `qr` extension, as each preset names.
+* Every table number was produced with a first-pivot sign rule (FastSign with an ordering heuristic; the presets
+  use `sign_rule="first_pivot"`). Repeated eigenvalues are handled by the `hybrid` or the `qr` extension, as each
+  preset names. The BREC PRiSM row is the one exception to the norm-signature ordering: its launch used the
+  individualization-refinement ordering (see BREC below), which has its own pivoted QR for every multiplicity.
 * The full Algorithm 1 (Partition, Refine, Solve with the GF(2) system, Match) is provided as preset `prism_gf2`
   and tested against the worked example of the paper (`tests/test_gf2.py`). It did not produce any table number.
 
@@ -430,14 +449,33 @@ are the paper's, not outputs of this repository.
 * The raw per-category results behind 212 / 199 / 199 were not recovered. The only matched ~12K-parameter launches
   found (three runs of the original code whose result logs are empty) used: GNN backbone, `num_vecs` 8, embed dim
   32, 2 layers, 2 heads, mean pooling (12,656 parameters), 20 epochs, lr 1e-4. The MAP and OAP configs shipped here
-  use those settings. The launch matching the PRiSM row used an individualization-refinement variant
-  (`IndRefineNauty`, pynauty), and the table's source file describes the row that way; this variant is not part of
-  this repository, and the link between those launches and the printed numbers is inferred. The shipped
-  `brec_prism` and `brec_prism_qr` configs are reconstructions and have not been shown to give 212.
+  use those settings.
+* The launch matching the PRiSM row used `pe_type=IndRefineNauty`, and the table's source file describes the row as
+  individualization-refinement followed by QR. That variant is now part of this repository: `brec_prism` runs it
+  (`PRiSM.from_preset("brec_indrefine")`, `ordering="indrefine_nauty"`, with `pynauty`). It orders the vertices of each
+  eigenspace by the diagonal and the sorted absolute row of the eigenspace projection matrix, with a nauty canonical
+  labelling of the graph (coloured by the projection-matrix diagonals) as the last tie-break, fixes the sign of a
+  simple eigenvector by its first entry in that order, and resolves a repeated eigenvalue by QR on the first linearly
+  independent pivot rows. It is golden-tested against the research code (`tests/test_golden.py`). That file was
+  edited after the matched launches had started, and the revision ported is its latest one, so it may differ from the
+  code that was running.
+* The link between those launches and the printed numbers is inferred, and `brec_prism` has not been run to the
+  full protocol here, so 212 is not claimed as reproduced. The earlier reconstruction (norm-signature ordering,
+  preset `brec`) is kept as `brec_prism_canonlpe`, and `brec_prism_qr` is unchanged; neither is the variant of the
+  launch.
+* The output does not depend on the eigenvector basis (up to the rounding of the ordering keys). The nauty canonical
+  form is unique only up to automorphisms: on a graph with non-trivial automorphisms, different labellings of the
+  same graph can lead to different representatives, and the output is then not permutation-equivariant. The tests
+  check equivariance on graphs without automorphisms.
 
 **Determinism.**
 * `eigsh` with a random start vector is used for graphs with n > 100 (n > 97 for LPE) in the transformer harness
   and, for BREC with 8 eigenvectors, for every graph with n > 12, so those runs are not bit-reproducible.
+  On BREC graphs this reaches the canonical eigenvectors: transforming the same graph twice sometimes gives
+  eigenvectors that differ by more than 1e-3, for every method (51 sampled graphs, one pair of transforms each:
+  10 differ for `IndRefineNauty`, 7 for the norm-signature ordering of `brec`, 18 for MAP; none of the Basic or
+  Extension graphs sampled differed). The live research code of the IndRefine ordering shows the same variation;
+  given one shared eigendecomposition, it and this repository agree exactly on 255 sampled BREC graphs.
 * Repeated eigenvalues make the `eigh` basis depend on the CPU and LAPACK build. Appendix counts that keep
   that basis (MAP, OAP, r-bound) move by a few graphs between machines. Reproduced vs paper, `tab:invariance`
   failures (PRiSM / MAP / OAP): ZINC 0 / 695 / 694 vs 0 / 692 / 684 and MolTox21 9 / 752 / 740 vs
@@ -459,14 +497,16 @@ python -m pytest                       # package: golden, invariance, FastSign, 
 ```
 
 * `test_golden.py` compares every preset with `tests/fixtures/golden.npz`, generated from the original research
-  code with `LIVE_SRC=<checkouts> python dev/make_golden.py` (see the script header).
+  code with `LIVE_SRC=<checkouts> python dev/make_golden.py` (see the script header); the `brec_indrefine` keys can
+  be added to an existing fixture alone with `--only-indrefine`.
+* `test_indrefine.py`: basis, permutation and eigenspace-rotation properties of `ordering="indrefine_nauty"`.
 * `test_invariance.py`: sign-flip, permutation and O(m) invariance.
 * `test_fastsign.py`, `test_gf2.py`: Algorithms 1 and 2 and the worked example of the paper.
 * `test_api.py`, `test_repo_hygiene.py`: interface and repository checks.
 
 Each experiment directory has its own `tests/` (configs, shapes, parameter counts, command-line entry points on
 synthetic data); run them inside the experiment's environment with `python -m pytest tests`. The package tests
-need only numpy and scipy; the tests that import torch are skipped without it. The MAP and OAP golden tests round
+need only numpy and scipy; the tests that import torch or pynauty are skipped without them. The MAP and OAP golden tests round
 projection norms to 14 decimals, so they are only reproducible with the torch versions of the paper (2.1 or 2.2;
 the `torch` extra pins `torch>=2.1,<2.3`). With a newer torch some of them fail on near-tied tie-breaks.
 

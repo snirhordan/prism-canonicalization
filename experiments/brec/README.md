@@ -13,7 +13,9 @@ The model is the GINE backbone of [`../wl_transformers`](../wl_transformers) who
 only positional information is a DeepSets embedding of the first 8 Laplacian
 eigenvectors, `rho(sum_i phi(v_i, lambda_i))`.  The architecture is the same for
 all methods (embedding size 32, 2 GINE layers, 12,656 trainable parameters, 12,664
-with the learnable eigenvalue perturbation of `CanonLPE`/`QRRefinedLPE`).
+with the learnable eigenvalue perturbation of `CanonLPE`/`QRRefinedLPE`).  The architecture and the
+protocol are those of the launch that matches the PRiSM row (see the reproducibility notes in the
+top-level README).
 
 ## Setup
 
@@ -25,19 +27,20 @@ conda activate ~/envs/prism-transformer
 cd experiments/brec
 ```
 
-The environment contains the `brec` package; the BREC graphs are downloaded into
-`./data` on first use and converted once (several minutes).
+The environment contains the `brec` package and `pynauty` (needed by the `IndRefineNauty` row only); the BREC
+graphs are downloaded into `./data` on first use and converted once (several minutes).
 
 ## Commands, one per row
 
 | row | command | canonicalizer |
 |---|---|---|
-| PRiSM | `python expressivity/brec_benchmark.py +experiment=brec_prism` | `PRiSM.from_preset("brec")` |
+| PRiSM | `python expressivity/brec_benchmark.py +experiment=brec_prism` | `PRiSM.from_preset("brec_indrefine")` (`pe_type=IndRefineNauty`, needs `pynauty`) |
+| PRiSM, norm-signature ordering | `python expressivity/brec_benchmark.py +experiment=brec_prism_canonlpe` | `PRiSM.from_preset("brec")` (`pe_type=CanonLPE_noeps`) |
 | PRiSM, QR for every multiplicity | `python expressivity/brec_benchmark.py +experiment=brec_prism_qr` | `PRiSM.from_preset("brec_qr_refined")` |
 | MAP | `python expressivity/brec_benchmark.py +experiment=brec_map` | `MAP.from_profile("brec")` |
 | OAP | `python expressivity/brec_benchmark.py +experiment=brec_oap` | `OAP.from_profile("brec")` |
 
-All four use `experiment/brec_matched.yaml` for the architecture.  The reported
+All five use `experiment/brec_matched.yaml` for the architecture.  The reported
 quantity is the number of distinguished pairs per category and in total, printed
 at the end:
 
@@ -70,7 +73,7 @@ processing).
 python -m pytest tests
 ```
 
-checks the four experiment configs (architecture, parameter count, canonicalizer) without
+checks the five experiment configs (architecture, parameter count, canonicalizer) without
 needing the dataset.
 
 ## Fixed protocol constants
@@ -79,7 +82,7 @@ Learning rate 1e-4, weight decay 1e-4, Adam with `ReduceLROnPlateau`, at most 20
 epochs per pair (early stop when the training loss drops below 0.2), batch size
 16, 32 relabellings per pair, T^2 threshold 72.34.  No seed is set beyond the
 `torch_geometric.seed_everything(2022)` call of the `brec` package; `seed=<n>`
-adds one.
+adds one.  A shortened run for a quick check is `epochs=10` (the table protocol is 20).
 
 ## Origin
 
