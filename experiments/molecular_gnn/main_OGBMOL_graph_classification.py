@@ -19,6 +19,8 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
+import utils.preload  # noqa: F401, E402  (before any dgl import)
+
 torch.set_default_dtype(torch.float64)  # pre-process with double, train with float
 
 from graphdata.data import LoadData  # noqa: E402
