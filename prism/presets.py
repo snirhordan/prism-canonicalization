@@ -15,6 +15,7 @@ Molecular GNN harness (``pe_init`` of the GNN configs)
 
 Transformer / BREC harness (``pe_type`` with ``refine_ordering``)
     ``CanonLPE_*`` + refine            transformer_refined
+    ``CanonLPE_min_sinid`` + refine    transformer_refined_prefix (rank_source="pre_refine")
     ``CanonLPE_*``                     brec
     ``QRRefinedLPE``                   brec_qr_refined
     ``IndRefineNauty``                 brec_indrefine (ordering="indrefine_nauty")
@@ -61,6 +62,11 @@ PRESETS = {
     # ---- transformer and BREC ---------------------------------------------
     "transformer_refined": dict(_TRANSFORMER, mult_mode="hybrid",
                                 refine_ordering=True),
+    # The MolClinTox cell of tab:transformer-results (README, Reproducibility notes):
+    # same eigenvectors as transformer_refined, but the canonical rank fed to the rank
+    # embedding is the norm-signature order, as in the research code before a later fix.
+    "transformer_refined_prefix": dict(_TRANSFORMER, mult_mode="hybrid",
+                                       refine_ordering=True, rank_source="pre_refine"),
     "brec": dict(_TRANSFORMER, mult_mode="hybrid", refine_ordering=False),
     "brec_qr_refined": dict(_TRANSFORMER, mult_mode="qr", refine_ordering=True),
     # Variant of the PRiSM row of tab:brec-comparison (README, Reproducibility notes):

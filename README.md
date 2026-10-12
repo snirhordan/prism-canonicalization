@@ -211,7 +211,10 @@ Two PRiSM cells have an extra config with its own preset for an alternative form
   MolClinTox, none on MolBBBP).
 * **Environment:** `experiments/transformer_ogb/env_transformer.yml`. Datasets download on first use into `./data`
   (Alchemy downloads the full 200K-graph `alchemy_full` and uses the 10K subset of `fine-tuning/*_al_10.index`).
-* **Preset:** PRiSM `transformer_refined` (through `wl_transformers.pe_types`); MAP and OAP profile `brec`.
+* **Preset:** PRiSM `transformer_refined` (through `wl_transformers.pe_types`), except the MolClinTox cell, whose
+  config `molclintox_prism` sets `prism_preset: transformer_refined_prefix` (canonical rank from the norm-signature
+  order, as in the original runs; the variant with the refined rank is `molclintox_prism_fixed`); MAP and OAP profile
+  `brec`.
 * **Seeds:** per row below (shell loop `for s in ...`); the reported value is the test score at the best
   validation epoch.
 * **Smoke check:** 13 to 20 s on an A40 (64 graphs per split, a few steps).
@@ -224,7 +227,8 @@ python fine-tuning/ogbg.py +experiment=molclintox_prism smoke=true
 ```
 
 All 16 rows are named configs: `{molhiv,molclintox,molbbbp}_{prism,lpe,map,oap}` with `fine-tuning/ogbg.py` and
-`alchemy_{prism,lpe,map,oap}` with `fine-tuning/alchemy.py`. The seed list of each row is in
+`alchemy_{prism,lpe,map,oap}` with `fine-tuning/alchemy.py`; `molclintox_prism_fixed` is the alternative MolClinTox
+PRiSM config. The seed list of each row is in
 `experiments/transformer_ogb/README.md`; the paper reports three seeds per cell, Alchemy seeds {0, 1, 3}.
 
 Paper (ROC-AUC, higher is better, for the three OGB datasets; test MAE, lower is better, for Alchemy):
@@ -342,14 +346,16 @@ Paper: number of validation graphs, mean nodes, share with r=0, share with exact
 | | `refine_ordering` | sequential refinement of the vertex order (required by `qr` and `gf2`) |
 | ordering | `ordering` | `spectral` (norm-value signature, all table cells but the BREC row) or `indrefine_nauty` (eigenspace projection matrices and a nauty canonical labelling, then pivoted QR; needs `pynauty` and the adjacency matrix; `sign_rule`, `mult_mode` and `refine_ordering` must keep their defaults) |
 | | `ir_order_decimals`, `ir_proj_decimals` | `indrefine_nauty` only: rounding of the vertex colours and ordering keys (8) and of the projection matrices (10) |
+| | `rank_source` | `refined` (default): `CanonInfo.order` / `rank` is the final order of the run. `pre_refine`: the norm-signature order computed before any column is canonicalized, as the research code stored the transformer rank before a later fix; needs `refine_ordering=True`, leaves the eigenvectors unchanged |
 | numerics | `tol_profile` | `adaptive` (relative snapping, eps floor) or `legacy_round` (fixed decimals) |
 | | `quantize_float32` | pass eigenpairs through float32 first (transformer / BREC storage) |
 | post-processing | `weight`, `weight_param` | `eigval`, `inv_sqrt_lap` (eps), `heat` (t) |
 
 Methods: `canonicalize` (`adjacency=` is required by `ordering="indrefine_nauty"`, which `pos_enc` and
 `spectrum` supply themselves), `eigendecompose`, `spectrum`, `pos_enc`, `from_preset`, `get_config` (the
-`ordering` arguments appear only when the ordering is not `spectral`, so the configuration, and the
-positional-encoding cache key of the molecular harness, of every other instance is unchanged), and the
+`ordering` arguments appear only when the ordering is not `spectral`, and `rank_source` only when it is not
+`refined`, so the configuration, and the positional-encoding cache key of the molecular harness, of every other
+instance is unchanged), and the
 stand-alone procedures `canonicalize_simple` (Algorithm 1)
 and `fastsign` (Algorithm 2). `prism.gf2` exposes the four stages.
 
@@ -370,7 +376,8 @@ checks this against outputs of the original implementations.
 | `moltox21_pna` | `spectral_m3_eigval` | `tab:molecular-results`, MolTox21 / PNA |
 | `molpcba_gatedgcn` | `spectral_qr_refined_eigval` | `tab:molecular-results`, MolPCBA / GatedGCN |
 | `molpcba_pna` | `spectral_qr_refined_eigval` | `tab:molecular-results`, MolPCBA / PNA |
-| `transformer_refined` | `CanonLPE_*` with `refine_ordering` | `tab:transformer-results`: MolHIV, MolClinTox, MolBBBP, Alchemy |
+| `transformer_refined` | `CanonLPE_*` with `refine_ordering` | `tab:transformer-results`: MolHIV, MolBBBP, Alchemy; MolClinTox in the `molclintox_prism_fixed` variant |
+| `transformer_refined_prefix` | `CanonLPE_*` with `refine_ordering`, canonical rank from the pre-refinement order | `tab:transformer-results`, MolClinTox (see the reproducibility notes) |
 | `brec_indrefine` | `IndRefineNauty` | `tab:brec-comparison`, PRiSM row (see the reproducibility notes) |
 | `brec`, `brec_qr_refined` | `CanonLPE_*`, `QRRefinedLPE` | `tab:brec-comparison` variants, not the printed row |
 | `qr_refined_full` | `spectral_qr_refined` on all eigenpairs | `tab:invariance` |
@@ -381,7 +388,9 @@ checks this against outputs of the original implementations.
 
 Rank embeddings (RoPE, sinusoidal) of the transformer cells are model options and
 not part of PRiSM; `prism.adapters.transformer.canonicalize_eigenpairs` returns the
-canonical order and rank that they consume.
+canonical order and rank that they consume. Which order that is, is the `rank_source` of
+the instance: `transformer_refined` reports the order refined by all canonical columns,
+`transformer_refined_prefix` the norm-signature order, with identical eigenvectors.
 
 ## Notes on the correspondence between paper and code
 
@@ -436,7 +445,20 @@ are the paper's, not outputs of this repository.
   appendix hyperparameter table: 768 hidden / 16 heads / 12 layers, 96 eigenvectors, batch size 32 (OGB) and
   64 (Alchemy), weight decay 0.1, no early stopping (test score at the best validation epoch), graph-token readout.
 * MolClinTox PRiSM 0.8576 +- 0.0038 was obtained before a later fix to how the canonical rank is computed for
-  `refine_ordering=True`. Runs of the fixed code give 0.841 +- 0.050 over six seeds (0.8375 on seeds 0 to 2).
+  `refine_ordering=True`. Before the fix the rank fed to the sinusoidal rank embedding was that of the norm-signature
+  order, computed before any eigenvector is canonicalized; after it, the rank of the order refined by all canonical
+  columns. The canonical eigenvectors are the same in both. The cell uses the pre-fix rank: config `molclintox_prism`
+  runs preset `transformer_refined_prefix` (`rank_source="pre_refine"`), which is golden-tested against the research
+  code before the fix. The refined rank is config `molclintox_prism_fixed` (preset `transformer_refined`); in the
+  original logs it gave 0.841 +- 0.050 over six seeds (0.8375 on seeds 0 to 2). Neither config has been trained
+  in full from this repository.
+* The original MolClinTox runs also differ from this harness in the eigensolver: torch `eigh` in float32 on the dense
+  Laplacian and no buffer eigenpairs, where this harness takes float64 eigenpairs, stores them in float32 and
+  canonicalizes 3 buffer eigenpairs. Float32 noise splits repeated eigenvalues that the float64 solver keeps equal
+  (with the grouping tolerance 1e-10, the eigenvalue multiplicities of 1000 of the 1467 MolClinTox graphs with at
+  most 96 nodes differ between the two). The eigenvectors fed to the canonicalizer therefore differ from the original
+  runs, and a full run of `molclintox_prism` need not give 0.8576. With the same eigenpairs as input, the preset and the
+  research code before the fix give the same eigenvectors, rank and order on all 1467 of these graphs.
 * Alchemy: the split index files in `fine-tuning/` are read by every Alchemy config and are identical to those of
   the original code. The 10,000 training indices
   contain 9,789 distinct graphs (validation 997 of 1000, test 999 of 1000), and the splits overlap: 59 graphs in

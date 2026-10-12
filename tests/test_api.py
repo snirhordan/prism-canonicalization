@@ -35,7 +35,8 @@ def test_every_preset_builds_and_roundtrips():
 
 def test_paper_cells_have_presets():
     for name in ["zinc_gatedgcn", "zinc_pna", "moltox21_gatedgcn", "moltox21_pna",
-                 "molpcba_gatedgcn", "molpcba_pna", "transformer_refined", "brec",
+                 "molpcba_gatedgcn", "molpcba_pna", "transformer_refined",
+                 "transformer_refined_prefix", "brec",
                  "rebuttal_comb_lap", "qr_refined_full", "prism_gf2"]:
         assert name in PRESETS
 
@@ -69,16 +70,17 @@ ORDERING_KEYS = {"ordering", "ir_order_decimals", "ir_proj_decimals"}
 
 
 def test_default_ordering_leaves_the_configuration_unchanged():
-    """The ordering arguments are listed only for a non-default ordering, so the
-    configuration (and the cache key of the molecular harness) of every other
-    preset is what it was before they existed."""
+    """The ordering and rank-source arguments are listed only when they are not the
+    default, so the configuration (and the cache key of the molecular harness) of
+    every other preset is what it was before they existed."""
     for name in PRESETS:
-        if _needs_pynauty(name):
+        if _needs_pynauty(name) or PRESETS[name].get("rank_source", "refined") != "refined":
             continue
         cfg = PRiSM.from_preset(name).get_config()
-        assert not ORDERING_KEYS & set(cfg)
+        assert not ORDERING_KEYS & set(cfg) and "rank_source" not in cfg
         assert len(cfg) == 15
     assert PRiSM().ordering == "spectral" and not PRiSM().needs_adjacency
+    assert PRiSM().rank_source == "refined"
 
 
 def test_nondefault_ordering_is_part_of_the_configuration():
@@ -103,6 +105,44 @@ def test_nondefault_ordering_is_part_of_the_configuration():
 def test_invalid_ordering_configurations_are_rejected(kwargs):
     with pytest.raises(ValueError):
         PRiSM(**kwargs)
+
+
+def test_rank_source_is_part_of_the_configuration_when_not_default():
+    canon = PRiSM.from_preset("transformer_refined_prefix")
+    cfg = canon.get_config()
+    assert cfg["rank_source"] == "pre_refine" and len(cfg) == 16
+    assert PRiSM(**cfg).get_config() == cfg
+    # the preset is transformer_refined with the other rank source and nothing else
+    assert cfg == dict(PRiSM.from_preset("transformer_refined").get_config(),
+                       rank_source="pre_refine")
+    assert "rank_source" not in PRiSM.from_preset("transformer_refined").get_config()
+
+
+@pytest.mark.parametrize("kwargs", [
+    dict(rank_source="spectral"),
+    dict(rank_source="pre_refine"),                                  # no refinement: no-op
+    dict(rank_source="pre_refine", refine_ordering=False, mult_mode="hybrid"),
+    dict(rank_source="pre_refine", ordering="indrefine_nauty"),
+])
+def test_invalid_rank_source_configurations_are_rejected(kwargs):
+    with pytest.raises(ValueError):
+        PRiSM(**kwargs)
+
+
+def test_rank_source_pre_refine_reports_the_norm_signature_order():
+    A = er_adjacency(14, 0.4, 2)
+    fixed = PRiSM.from_preset("transformer_refined")
+    pre = PRiSM.from_preset("transformer_refined_prefix")
+    lam, V = fixed.eigendecompose(A)
+    a = fixed.canonicalize(V, lam, return_info=True)
+    b = pre.canonicalize(V, lam, return_info=True)
+    np.testing.assert_array_equal(a.V, b.V)
+    np.testing.assert_array_equal(pre.canonicalize(V, lam), a.V)
+    # pre_refine: the order of the signature alone, as the non-refined path computes it
+    plain = PRiSM.from_preset("brec").canonicalize(V, lam, return_info=True)
+    np.testing.assert_array_equal(b.order, plain.order)
+    np.testing.assert_array_equal(b.rank[b.order], np.arange(A.shape[0]))
+    assert not np.array_equal(a.order, b.order)
 
 
 def test_missing_pynauty_gives_a_clear_import_error(monkeypatch):
@@ -230,6 +270,21 @@ def test_transformer_adapter_handles_nan_padding():
     assert out["norm_sig"].shape == (9, num_vecs)
     np.testing.assert_array_equal(out["canon_rank"], info.rank)
     np.testing.assert_array_equal(out["canon_order"], info.order)
+
+
+def test_transformer_adapter_passes_on_the_rank_source():
+    A = er_adjacency(9, 0.5, 5)
+    fixed = PRiSM.from_preset("transformer_refined")
+    pre = PRiSM.from_preset("transformer_refined_prefix")
+    lam, V = fixed.eigendecompose(A)
+    a = canonicalize_eigenpairs(lam, V, fixed, 12)
+    b = canonicalize_eigenpairs(lam, V, pre, 12)
+    np.testing.assert_array_equal(a["eigvecs"], b["eigvecs"])
+    np.testing.assert_array_equal(a["norm_sig"], b["norm_sig"])
+    info = pre.canonicalize(V, lam, return_info=True)
+    np.testing.assert_array_equal(b["canon_rank"], info.rank)
+    np.testing.assert_array_equal(b["canon_order"], info.order)
+    assert not np.array_equal(a["canon_order"], b["canon_order"])
 
 
 def test_dgl_adapter():

@@ -15,6 +15,7 @@ ROWS = {
     "molhiv_map": ("ogbg", "ogbg-molhiv", "MAP_min", False, 1e-4),
     "molhiv_oap": ("ogbg", "ogbg-molhiv", "OAP_min", False, 1e-4),
     "molclintox_prism": ("ogbg", "ogbg-molclintox", "CanonLPE_min_sinid", True, 1e-4),
+    "molclintox_prism_fixed": ("ogbg", "ogbg-molclintox", "CanonLPE_min_sinid", True, 1e-4),
     "molclintox_lpe": ("ogbg", "ogbg-molclintox", "LPE", False, 1e-4),
     "molclintox_map": ("ogbg", "ogbg-molclintox", "MAP_min", False, 1e-4),
     "molclintox_oap": ("ogbg", "ogbg-molclintox", "OAP_min", False, 1e-4),
@@ -46,6 +47,31 @@ def test_experiment_composes(name):
         assert cfg.dataset_name == dataset
     assert cfg.wandb_project is None
     make_canonicalizer(cfg.pe_type, cfg.refine_ordering, cfg.prism_preset)
+
+
+def _canonicalizer(name):
+    with initialize_config_dir(config_dir=CONFIGS, version_base=None):
+        cfg = compose(config_name=ROWS[name][0], overrides=[f"+experiment={name}"])
+    return cfg, make_canonicalizer(cfg.pe_type, cfg.refine_ordering, cfg.prism_preset)
+
+
+def test_molclintox_prism_takes_the_rank_from_the_pre_refinement_order():
+    """The printed MolClinTox cell predates the fix of the canonical rank; the fixed variant
+    has its own config and shares everything else with it."""
+    cfg, canon = _canonicalizer("molclintox_prism")
+    assert cfg.prism_preset == "transformer_refined_prefix"
+    assert canon.get_config()["rank_source"] == "pre_refine"
+    cfg_fixed, canon_fixed = _canonicalizer("molclintox_prism_fixed")
+    assert cfg_fixed.prism_preset == "transformer_refined"
+    assert "rank_source" not in canon_fixed.get_config()
+    assert canon.get_config() == dict(canon_fixed.get_config(), rank_source="pre_refine")
+
+
+@pytest.mark.parametrize("name", ["molhiv_prism", "molbbbp_prism", "alchemy_prism"])
+def test_other_prism_rows_keep_the_refined_rank(name):
+    cfg, canon = _canonicalizer(name)
+    assert cfg.prism_preset is None
+    assert "rank_source" not in canon.get_config()
 
 
 def test_alchemy_split_files():

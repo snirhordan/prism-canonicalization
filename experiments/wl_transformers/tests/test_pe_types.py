@@ -47,6 +47,19 @@ def test_canonicalizers_come_from_prism():
     assert "transformer_refined" in PRESETS
 
 
+def test_prefix_preset_is_requested_not_derived():
+    from prism import PRiSM
+
+    pe = resolve_pe_type("CanonLPE_min_sinid")
+    for refine in (False, True):
+        assert prism_preset_for(pe, refine) != "transformer_refined_prefix"
+    c = make_canonicalizer("CanonLPE_min_sinid", True, "transformer_refined_prefix")
+    assert isinstance(c, PRiSM)
+    assert c.get_config() == PRiSM.from_preset("transformer_refined_prefix").get_config()
+    assert c.get_config()["rank_source"] == "pre_refine"
+    assert (pe.eps, pe.minimal_rho, pe.rank) == (False, True, "sinusoidal")
+
+
 def test_baseline_profiles_are_the_transformer_ones():
     assert make_canonicalizer("MAP_min").use_eig_val is False
     assert make_canonicalizer("OAP_min").use_eig_val is False

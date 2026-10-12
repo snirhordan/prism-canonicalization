@@ -39,6 +39,7 @@ epoch, printed on the last line (`Final | best_val_score=... test_score=...`).
 | MolHIV, MAP | `python fine-tuning/ogbg.py +experiment=molhiv_map seed=$s` | 0 1 3 |
 | MolHIV, OAP | `python fine-tuning/ogbg.py +experiment=molhiv_oap seed=$s` | 0 1 2 |
 | MolClinTox, PRiSM | `python fine-tuning/ogbg.py +experiment=molclintox_prism seed=$s` | 0 1 2 |
+| MolClinTox, PRiSM, refined rank (alternative) | `python fine-tuning/ogbg.py +experiment=molclintox_prism_fixed seed=$s` | 0 1 2 3 4 5 |
 | MolClinTox, LPE | `python fine-tuning/ogbg.py +experiment=molclintox_lpe seed=$s` | 0 1 2 3 4 5 |
 | MolClinTox, MAP | `python fine-tuning/ogbg.py +experiment=molclintox_map seed=$s` | 0 1 2 |
 | MolClinTox, OAP | `python fine-tuning/ogbg.py +experiment=molclintox_oap seed=$s` | 0 1 2 3 4 5 |
@@ -67,7 +68,8 @@ for s in 0 1 2; do python fine-tuning/ogbg.py +experiment=molhiv_prism seed=$s; 
 | config | `pe_type` | `refine_ordering` | rank information |
 |---|---|---|---|
 | `molhiv_prism`, `alchemy_prism` | `CanonLPE_min_rope` | true | RoPE on the canonical vertex rank |
-| `molclintox_prism` | `CanonLPE_min_sinid` | true | sinusoidal embedding of the rank |
+| `molclintox_prism` | `CanonLPE_min_sinid` | true | sinusoidal embedding of the rank; preset `transformer_refined_prefix`: the rank of the norm-signature order, as in the original runs |
+| `molclintox_prism_fixed` | `CanonLPE_min_sinid` | true | sinusoidal embedding of the rank; preset `transformer_refined`: the rank of the order refined by the canonical columns |
 | `molbbbp_prism` | `CanonLPE_min` | true | none (sequential refinement only) |
 | `*_lpe` | `LPE` | false | none |
 | `*_map` | `MAP_min` | false | none |
@@ -108,7 +110,8 @@ shortens a full run without changing the data.
 python -m pytest tests
 ```
 
-checks that every experiment config composes and selects a supported canonicalizer.
+checks that every experiment config composes and selects a supported canonicalizer, and which
+canonical rank the two MolClinTox PRiSM configs use.
 The library tests are in `../wl_transformers/tests`.
 
 ## Origin

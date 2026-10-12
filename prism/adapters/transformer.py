@@ -26,6 +26,10 @@ def canonicalize_eigenpairs(eigvals, eigvecs, canon, num_vecs: int, adjacency=No
 
     Returns a dict with ``eigvecs`` (float32, input shape), ``norm_sig``
     (float32, (n, num_vecs)), ``canon_rank`` and ``canon_order`` (int64, (n,)).
+    ``canon_order`` and ``canon_rank`` are the order that ``canon`` reports
+    (``canon.rank_source``): the refined order by default, the norm-signature
+    order for ``rank_source="pre_refine"`` (preset ``transformer_refined_prefix``,
+    the MolClinTox cell).  The eigenvectors do not depend on it.
     """
     eigvals = np.asarray(eigvals, dtype=np.float64)
     eigvecs = np.asarray(eigvecs, dtype=np.float64).copy()

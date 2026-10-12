@@ -1,4 +1,9 @@
 # @package _global_
+# The MolClinTox PRiSM cell of tab:transformer-results (0.8576 +- 0.0038).  The canonical rank
+# fed to the sinusoidal rank embedding is the norm-signature order computed before the
+# eigenvectors are canonicalized, as in the research code before its commit f5e4255; the
+# alternative (refined order) is molclintox_prism_fixed.
 dataset_name: ogbg-molclintox
 pe_type: CanonLPE_min_sinid
 refine_ordering: true
+prism_preset: transformer_refined_prefix

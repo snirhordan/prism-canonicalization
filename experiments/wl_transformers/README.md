@@ -46,7 +46,11 @@ the 3 buffer eigenpairs again.  The buffer lets an eigenspace that straddles the
 
 With `refine_ordering=false` the PRiSM types use the preset `brec` (hybrid
 extension without ordering refinement); with `refine_ordering=true` they use
-`transformer_refined`.  The config key `prism_preset` overrides the choice.
+`transformer_refined`.  The config key `prism_preset` overrides the choice; the
+MolClinTox PRiSM config sets it to `transformer_refined_prefix`, which gives the
+eigenvectors of `transformer_refined` but stores the norm-signature order, not the
+refined one, as `canon_order` and `canon_rank` (the rank source of the original
+runs, see the reproducibility notes of the repository README).
 `prism.adapters.transformer.canonicalize_eigenpairs` returns the canonical
 eigenvectors together with the canonical vertex order and rank; the rank feeds
 the RoPE or sinusoidal embedding.  MAP and OAP return eigenvectors only.

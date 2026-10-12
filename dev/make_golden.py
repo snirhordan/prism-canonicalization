@@ -15,12 +15,24 @@ Usage::
     # all other keys are left as they are; needs only numpy, scipy and pynauty)
     LIVE_SRC=... python dev/make_golden.py --only-indrefine
 
+    # add only the pre-fix rank keys (needs only numpy; see PREFIX_SRC below)
+    LIVE_SRC=... python dev/make_golden.py --only-prefix
+
 ``LIVE_SRC`` must contain these checkouts (read-only; nothing is written there)::
 
     $LIVE_SRC/canonicalization-fresh      molecular GNN harness
     $LIVE_SRC/brec_pe_canon               transformer / BREC harness (spectral_m3.py,
                                           map_oap.py, indrefine.py)
     $LIVE_SRC/WL-Simple/experiments/thm1_demo/prism_signsolve.py   GF(2) reference
+
+The pre-fix keys (``fn__prefix_m3_refined__*``, the MolClinTox cell) come from the
+transformer harness as it was before research-code commit f5e4255, which changed which
+vertex order is stored as ``canon_rank`` when ``refine_ordering=True``.  They need
+``spectral_m3.py`` of the parent revision ``f5e4255^``.  ``PREFIX_SRC`` may name a
+directory holding the extracted file (``git -C $LIVE_SRC/brec_pe_canon show
+f5e4255^:spectral_m3.py > $PREFIX_SRC/spectral_m3.py``); when it is unset the script
+extracts the file itself into a temporary directory.  The live checkouts are never
+modified.
 
 The environment must provide numpy, scipy, torch, dgl, networkx and pynauty (the
 molecular GNN environment of the paper plus pynauty does).
@@ -35,6 +47,7 @@ import os
 import pickle
 import subprocess
 import sys
+import tempfile
 
 sys.dont_write_bytecode = True
 
@@ -246,6 +259,54 @@ def indrefine_goldens(out, mats, norm_lap_specs):
     ])
 
 
+# ------------------------------------------- pre-fix rank (MolClinTox cell)
+
+PREFIX_REV = "f5e4255^"   # parent of the commit that changed canon_rank for refine_ordering=True
+
+
+def load_prefix_spectral():
+    """The pre-fix ``spectral_m3.py`` of the transformer harness, and its path."""
+    src = os.environ.get("PREFIX_SRC")
+    if src:
+        path = os.path.join(src, "spectral_m3.py")
+    else:
+        path = os.path.join(tempfile.mkdtemp(prefix="prefix_src_"), "spectral_m3.py")
+        with open(path, "wb") as fh:
+            fh.write(subprocess.check_output(
+                ["git", "-C", BREC, "show", f"{PREFIX_REV}:spectral_m3.py"]))
+    return load_module("live_brec_prefix_spectral", path), path
+
+
+def prefix_goldens(out, norm_lap_specs):
+    """Add the ``fn__prefix_m3_refined*`` keys: the canonicalization branch of the pre-fix
+    ``Transform.__call__`` (``spectral_m3``, ``refine_ordering=True``) on the stored float32
+    normalized-Laplacian eigenpairs.  The pre-fix harness stored as ``canon_rank`` the rank of
+    the norm-signature order ``canonical_ordering(compute_norm_signature(ev, mults))``, computed
+    before the eigenvectors were canonicalized; the eigenvectors are those of the refined path."""
+    pre, path = load_prefix_spectral()
+    Vs, orders = [], []
+    for lam, V in norm_lap_specs:
+        lam = np.asarray(lam, dtype=np.float64)
+        V = np.asarray(V, dtype=np.float64)
+        mults = pre.detect_multiplicities(lam)
+        orders.append(pre.canonical_ordering(pre.compute_norm_signature(V, mults)))
+        Vs.append(pre.spectral_m3_canonicalize(V, lam, refine_ordering=True))
+    out["fn__prefix_m3_refined__V"], out["fn__prefix_m3_refined__off"] = pack(Vs)
+    out["fn__prefix_m3_refined__order"], out["fn__prefix_m3_refined__order_off"] = pack(orders)
+    try:
+        blob = subprocess.check_output(["git", "hash-object", path],
+                                       stderr=subprocess.DEVNULL).decode().strip()[:12]
+        parent = subprocess.check_output(
+            ["git", "-C", BREC, "rev-parse", "--short", PREFIX_REV],
+            stderr=subprocess.DEVNULL).decode().strip()
+    except Exception:
+        blob = parent = "unknown"
+    out["meta__live_rev_prefix"] = np.array([
+        f"brec_pe_canon spectral_m3.py at {PREFIX_REV} = {parent}, blob {blob}",
+        f"numpy {np.__version__}",
+    ])
+
+
 def stored_spectra(z, op):
     """The ``(lam, V)`` lists of the stored spectra of ``op`` in an existing fixture."""
     sizes = z["meta__sizes"]
@@ -277,6 +338,18 @@ def add_indrefine_to_fixture(path):
         print("  ", k)
 
 
+def add_prefix_to_fixture(path):
+    """Add only the pre-fix rank keys to an existing fixture; every other key is kept as is."""
+    z = dict(np.load(path))
+    old_keys = set(z)
+    prefix_goldens(z, stored_spectra(z, "norm_lap_f32"))
+    np.savez_compressed(path, **z)
+    new = sorted(set(z) - old_keys)
+    print(f"added {len(new)} keys to {path}: {os.path.getsize(path) / 1e6:.2f} MB")
+    for k in new:
+        print("  ", k)
+
+
 # --------------------------------------------------------------------- main
 
 def main():
@@ -285,10 +358,15 @@ def main():
                                                   "fixtures", "golden.npz"))
     ap.add_argument("--only-indrefine", action="store_true",
                     help="add only the IndRefineNauty keys to the existing --out fixture")
+    ap.add_argument("--only-prefix", action="store_true",
+                    help="add only the pre-fix rank keys to the existing --out fixture")
     args = ap.parse_args()
 
-    if args.only_indrefine:
-        add_indrefine_to_fixture(os.path.abspath(args.out))
+    if args.only_indrefine or args.only_prefix:
+        if args.only_indrefine:
+            add_indrefine_to_fixture(os.path.abspath(args.out))
+        if args.only_prefix:
+            add_prefix_to_fixture(os.path.abspath(args.out))
         return
 
     import torch
@@ -388,6 +466,9 @@ def main():
 
     # IndRefineNauty (the BREC PRiSM row): live indrefine.py on the same spectra
     indrefine_goldens(out, mats, [s["norm_lap_f32"] for s in specs])
+
+    # pre-fix canon_rank of the MolClinTox cell: spectral_m3.py before commit f5e4255
+    prefix_goldens(out, [s["norm_lap_f32"] for s in specs])
 
     # ---- PE-level goldens (live DGL wrappers) ------------------------------
     pe_cases = {

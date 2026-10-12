@@ -21,7 +21,9 @@ Ordering
     from the norm-value signature (``spectral``, the default, used by all
     table cells but one) or from the projection matrices and a nauty
     canonical labelling (``indrefine_nauty``, the BREC row; needs the
-    optional ``pynauty`` and the adjacency matrix).
+    optional ``pynauty`` and the adjacency matrix).  ``rank_source`` selects
+    which vertex order is reported as the canonical order and rank (it does
+    not change the eigenvectors).
 Numerics
     ``tol_profile`` and ``quantize_float32`` choose the tolerance profile and
     whether eigenpairs pass through float32 first (as in the transformer
@@ -45,6 +47,7 @@ _SCOPES = ("full", "window")
 _KEEP = ("last", "first")
 _WEIGHTS = (None, "eigval", "inv_sqrt_lap", "heat")
 _ORDERINGS = ("spectral", "indrefine_nauty")
+_RANK_SOURCES = ("refined", "pre_refine")
 
 
 @dataclass
@@ -52,7 +55,9 @@ class CanonInfo:
     """Result of :meth:`PRiSM.canonicalize` with ``return_info=True``.
 
     V           canonical eigenvectors (n, k), float64, input column order.
-    order       canonical vertex order (``order[i]`` = vertex at position i).
+    order       canonical vertex order (``order[i]`` = vertex at position i);
+                the final refined order, or with ``rank_source="pre_refine"``
+                the norm-signature order.
     rank        inverse permutation (``rank[order[i]] = i``).
     norm_sig    norm-value signature of the input eigenvectors (n, K).
     multiplicities  eigenspace multiplicities used.
@@ -138,6 +143,18 @@ class PRiSM:
         (vertex colours of nauty) and the ordering keys are rounded.
     ir_proj_decimals : int
         ``indrefine_nauty``: decimals to which the projection matrices are rounded.
+    rank_source : {"refined", "pre_refine"}
+        Which vertex order :class:`CanonInfo` reports as ``order`` and ``rank``
+        (the transformer harness feeds the rank to its rank embeddings).
+        ``refined``: the final order of the run, i.e. with ``refine_ordering``
+        the order refined by all canonical columns.  ``pre_refine``: the
+        norm-signature order computed before any column is canonicalized, even
+        when ``refine_ordering`` refines the order used for the pivots.  The
+        canonical eigenvectors are the same for both.  ``pre_refine`` is how the
+        research code took the rank before a later fix (MolClinTox cell of the
+        transformer table).  It needs ``refine_ordering=True`` with
+        ``ordering="spectral"``; without refinement the rank already is the
+        norm-signature order.
     """
 
     def __init__(
@@ -161,6 +178,7 @@ class PRiSM:
         ordering: str = "spectral",
         ir_order_decimals: int = 8,
         ir_proj_decimals: int = 10,
+        rank_source: str = "refined",
     ):
         if operator not in operators.OPERATORS:
             raise ValueError(f"operator must be one of {operators.OPERATORS}")
@@ -187,6 +205,12 @@ class PRiSM:
             raise ValueError("k must be non-negative")
         if ordering not in _ORDERINGS:
             raise ValueError(f"ordering must be one of {_ORDERINGS}")
+        if rank_source not in _RANK_SOURCES:
+            raise ValueError(f"rank_source must be one of {_RANK_SOURCES}")
+        if rank_source == "pre_refine" and (ordering != "spectral" or not refine_ordering):
+            raise ValueError("rank_source='pre_refine' needs ordering='spectral' and "
+                             "refine_ordering=True (without refinement the rank already is "
+                             "the norm-signature order)")
         if ordering == "indrefine_nauty":
             if sign_rule != "first_pivot" or mult_mode != "hybrid" or refine_ordering:
                 raise ValueError("ordering='indrefine_nauty' resolves every eigenspace by "
@@ -213,6 +237,7 @@ class PRiSM:
         self.ordering = ordering
         self.ir_order_decimals = ir_order_decimals
         self.ir_proj_decimals = ir_proj_decimals
+        self.rank_source = rank_source
         self.tol = core.make_tolerances(tol_profile, mult_mode)
 
     # ------------------------------------------------------------------ setup
@@ -237,8 +262,9 @@ class PRiSM:
         """The constructor arguments of this instance.
 
         The arguments of the ``ordering`` layer are listed only for a non-default
-        ordering, so the configuration (and with it the cache key of the molecular
-        harness) of every ``spectral`` instance is the same as before they existed.
+        ordering, and ``rank_source`` only when it is not ``refined``, so the
+        configuration (and with it the cache key of the molecular harness) of every
+        other instance is the same as before they existed.
         """
         cfg = dict(
             operator=self.operator, drop_trivial=self.drop_trivial, k=self.k,
@@ -252,6 +278,8 @@ class PRiSM:
         if self.ordering != "spectral":
             cfg.update(ordering=self.ordering, ir_order_decimals=self.ir_order_decimals,
                        ir_proj_decimals=self.ir_proj_decimals)
+        if self.rank_source != "refined":
+            cfg.update(rank_source=self.rank_source)
         return cfg
 
     def __repr__(self) -> str:
@@ -306,11 +334,14 @@ class PRiSM:
         if not return_info:
             return Vc
         n = V.shape[0]
+        norm_sig = core.compute_norm_signature(V, mults)
+        if self.rank_source == "pre_refine":
+            order = core.canonical_ordering(norm_sig, tol)
         rank = np.zeros(n, dtype=np.int64)
         rank[order] = np.arange(n)
         return CanonInfo(
             V=Vc, order=order, rank=rank,
-            norm_sig=core.compute_norm_signature(V, mults),
+            norm_sig=norm_sig,
             multiplicities=mults,
         )
 

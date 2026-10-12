@@ -16,9 +16,9 @@ def make_graph(G):
     return data
 
 
-def transform(pe_type, refine=False, num_vecs=NUM_VECS):
+def transform(pe_type, refine=False, num_vecs=NUM_VECS, preset=None):
     return Transform(num_vecs, 2, True, False,
-                     canonicalizer=make_canonicalizer(pe_type, refine))
+                     canonicalizer=make_canonicalizer(pe_type, refine, preset))
 
 
 def generic_graph(n=12, seed=3):
@@ -50,6 +50,21 @@ def test_prism_attaches_canonical_rank_and_baselines_do_not():
     assert torch.equal(d.canon_rank[d.canon_order], torch.arange(10))
     for pe in ("LPE", "MAP_min", "OAP_min"):
         assert not hasattr(transform(pe)(g.clone()), "canon_rank")
+
+
+def test_prefix_preset_changes_only_the_stored_rank():
+    """``transformer_refined_prefix`` (MolClinTox cell) stores the norm-signature rank; the
+    eigenvectors are those of ``transformer_refined`` and the rank of the unrefined ``brec``."""
+    g = make_graph(generic_graph())
+    fixed = transform("CanonLPE_min_sinid", True)(g.clone())
+    pre = transform("CanonLPE_min_sinid", True, preset="transformer_refined_prefix")(g.clone())
+    plain = transform("CanonLPE_min_sinid", False)(g.clone())
+    assert torch.equal(pre.eigvecs.isnan(), fixed.eigvecs.isnan())
+    assert torch.equal(torch.nan_to_num(pre.eigvecs), torch.nan_to_num(fixed.eigvecs))
+    assert torch.equal(pre.canon_rank, plain.canon_rank)
+    assert torch.equal(pre.canon_order, plain.canon_order)
+    assert not torch.equal(pre.canon_rank, fixed.canon_rank)
+    assert torch.equal(pre.canon_rank[pre.canon_order], torch.arange(pre.num_nodes))
 
 
 @pytest.mark.parametrize("pe_type,refine", [("CanonLPE_min_rope", True), ("CanonLPE_min", False)])

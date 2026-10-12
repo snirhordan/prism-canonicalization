@@ -6,7 +6,8 @@ the canonical vertex rank enters the model.  Canonicalization itself is always
 delegated to the ``prism`` package:
 
 * PRiSM variants use :class:`prism.PRiSM` through a named preset
-  (``transformer_refined``, ``brec``, ``brec_qr_refined``, ``brec_indrefine``);
+  (``transformer_refined``, ``transformer_refined_prefix``, ``brec``,
+  ``brec_qr_refined``, ``brec_indrefine``);
 * MAP and OAP use :class:`prism.baselines.MAP` / :class:`prism.baselines.OAP`
   with the ``brec`` profile.
 
@@ -76,6 +77,11 @@ def prism_preset_for(pe: PEType, refine_ordering: bool, override: Optional[str] 
     transformer harness uses ``transformer_refined`` when sequential ordering
     refinement is on and ``brec`` when it is off; ``QRRefinedLPE`` always uses
     ``brec_qr_refined`` and ``IndRefineNauty`` ``brec_indrefine``.
+
+    The preset ``transformer_refined_prefix`` is never derived, only requested
+    through ``override``: it has the eigenvectors of ``transformer_refined`` but
+    reports the pre-refinement order as ``canon_order`` / ``canon_rank`` (the
+    ``molclintox_prism`` config of ``experiments/transformer_ogb``).
     """
     if override:
         return override

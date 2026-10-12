@@ -85,6 +85,53 @@ def test_transformer_window(golden, i):
                                rtol=0, atol=ATOL)
 
 
+# ------------------------------------- pre-fix rank (MolClinTox cell of the transformer table)
+
+PREFIX_KEY = "prefix_m3_refined"
+
+
+def _need_prefix_keys(golden):
+    if f"fn__{PREFIX_KEY}__V" not in golden.z.files:
+        pytest.skip("golden.npz has no pre-fix keys; run dev/make_golden.py --only-prefix")
+
+
+@pytest.mark.parametrize("i", IDS, ids=_id)
+def test_prefix_rank_matches_live(golden, i):
+    """Preset ``transformer_refined_prefix`` against the research code before commit f5e4255:
+    eigenvectors (atol 1e-8) and the stored vertex order, which is the norm-signature order
+    and not the refined one (exact)."""
+    _need_prefix_keys(golden)
+    lam, V = golden.spec("norm_lap_f32", i)
+    info = PRiSM.from_preset("transformer_refined_prefix").canonicalize(V, lam, return_info=True)
+    np.testing.assert_allclose(info.V, golden.fn(PREFIX_KEY, i, "norm_lap_f32"), rtol=0, atol=ATOL)
+    order = golden.fn_order(PREFIX_KEY, i)
+    np.testing.assert_array_equal(info.order, order)
+    rank = np.empty_like(order)
+    rank[order] = np.arange(order.size)
+    np.testing.assert_array_equal(info.rank, rank)
+
+
+@pytest.mark.parametrize("i", IDS, ids=_id)
+def test_prefix_rank_only_changes_the_reported_order(golden, i):
+    """The knob does not touch the eigenvectors or the signature; the fixed preset still
+    reports the refined order of the post-fix research code."""
+    lam, V = golden.spec("norm_lap_f32", i)
+    pre = PRiSM.from_preset("transformer_refined_prefix").canonicalize(V, lam, return_info=True)
+    fixed = PRiSM.from_preset("transformer_refined").canonicalize(V, lam, return_info=True)
+    np.testing.assert_array_equal(pre.V, fixed.V)
+    np.testing.assert_array_equal(pre.norm_sig, fixed.norm_sig)
+    np.testing.assert_array_equal(fixed.order, golden.fn_order("brec_m3_refined", i))
+
+
+def test_prefix_and_fixed_ranks_differ_on_the_fixture(golden):
+    """The knob is not vacuous: the two reported orders differ on the stored graphs."""
+    _need_prefix_keys(golden)
+    differing = sum(
+        not np.array_equal(golden.fn_order(PREFIX_KEY, i), golden.fn_order("brec_m3_refined", i))
+        for i in IDS)
+    assert differing > len(IDS) // 2
+
+
 # ----------------------------------------------- IndRefineNauty (BREC PRiSM row)
 
 IR_KEYS = [("brec_indrefine", None), ("brec_indrefine_window_k8", 8)]
