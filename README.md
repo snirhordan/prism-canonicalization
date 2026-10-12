@@ -459,10 +459,16 @@ are the paper's, not outputs of this repository.
   independent pivot rows. It is golden-tested against the research code (`tests/test_golden.py`). That file was
   edited after the matched launches had started, and the revision ported is its latest one, so it may differ from the
   code that was running.
-* The link between those launches and the printed numbers is inferred, and `brec_prism` has not been run to the
-  full protocol here, so 212 is not claimed as reproduced. The earlier reconstruction (norm-signature ordering,
+* The link between those launches and the printed numbers is inferred, and `brec_prism` has only been run in the
+  shortened form below, so 212 is not claimed as reproduced. The earlier reconstruction (norm-signature ordering,
   preset `brec`) is kept as `brec_prism_canonlpe`, and `brec_prism_qr` is unchanged; neither is the variant of the
   launch.
+* Shortened runs, `epochs=10` instead of 20, one run each, A40, commit `fb5b3f2`: `brec_prism` gave 60 / 50 / 100 / 5
+  = 215 of 360, `brec_map` 60 / 49 / 100 / 3 = 212 and `brec_oap` 60 / 44 / 95 / 3 = 202, against the printed 212,
+  199 and 199 (60 / 50 / 99 / 3 and 60 / 42 / 94 / 3). The PRiSM total is within 3 of the printed one, with the
+  Regular count equal; MAP is 13 above its printed total, so the gap between PRiSM and MAP of the printed table is not
+  seen in these runs. With eigsh in the pipeline (see Determinism) the counts change from run to run, and the 20-epoch
+  protocol was not run.
 * The output does not depend on the eigenvector basis (up to the rounding of the ordering keys). The nauty canonical
   form is unique only up to automorphisms: on a graph with non-trivial automorphisms, different labellings of the
   same graph can lead to different representatives, and the output is then not permutation-equivariant. The tests
