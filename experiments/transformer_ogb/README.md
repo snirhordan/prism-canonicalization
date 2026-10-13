@@ -102,7 +102,12 @@ python fine-tuning/alchemy.py +experiment=alchemy_prism smoke=true
 `smoke=true` restricts every split to its first `smoke_graphs` graphs (64 for OGB,
 128 for Alchemy) and trains for one epoch; it runs on CPU in minutes, after the
 dataset download (Alchemy downloads the full 200K-graph dataset).  `num_epochs=<n>`
-shortens a full run without changing the data.
+shortens a full run without changing the data.  The learning-rate schedule is rescaled to the new length: the
+cosine decay runs over `num_epochs` and the linear warm-up is `int(0.025 * num_epochs)` epochs,
+which is 0 for fewer than 40 epochs.  The rows with learning rate 1e-3 (`alchemy_map`,
+`alchemy_oap`) then train without warm-up and can sit on the loss plateau of the mean prediction
+for several epochs (10 epochs, seed 0: test MAE 0.54 for both); `lr=1e-4` avoids this
+(0.2065 for MAP, 0.2078 for OAP).  The 1e-4 rows are not affected.
 
 ## Tests
 
