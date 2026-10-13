@@ -174,7 +174,7 @@ Paper (pairs distinguished):
 * **Smoke check:** 12 to 25 s (71 s for PNA on MolPCBA) per config on an A40, one epoch on 512/128/128 graphs.
 * **Cost notes:** build the positional-encoding cache once on CPU before launching seeds
   (`--build_pe_only --pe_workers 4`; about two hours serially for MolPCBA with k=16); PNA on MolPCBA needs one
-  48 GB GPU per process. `PNA_MOLPCBA_SignNet` does not fit in memory (OOM in the table).
+  48 GB GPU per process. The paper table prints OOM for `PNA_MOLPCBA_SignNet` (the entry of Ma et al.); on a 48 GB A40 a 10-epoch run of the shipped config completed (about 590 s per epoch), so the config is not known to run out of memory on that card.
 
 ```
 cd experiments/molecular_gnn

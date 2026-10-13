@@ -54,7 +54,7 @@ Two PRiSM cells also have an alternative configuration with its own preset, ship
 `GatedGCN_MOLPCBA_PRiSM_plain.json` (preset `molpcba_gatedgcn_plain`, without eigenvalue weighting).
 
 `LapPE` configs exist for every cell except PNA / ZINC; they are not a row of the paper table.
-`configs/PNA_MOLPCBA_SignNet.json` does not fit in GPU memory (reported as OOM in the paper table).
+`configs/PNA_MOLPCBA_SignNet.json` is reported as OOM in the paper table; a 10-epoch run of this config completed on a 48 GB A40 (about 590 s per epoch), so it is not known to run out of memory on that card.
 
 One command per cell of the table. ZINC uses `main_ZINC_graph_regression.py`, MolTox21 and MolPCBA use
 `main_OGBMOL_graph_classification.py`; add `--seed S` to train one seed only (see "Cost and good practice"):
